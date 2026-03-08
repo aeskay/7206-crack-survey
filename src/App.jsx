@@ -94,12 +94,14 @@ function App() {
     };
 
     const handleAddDay = async (newDay) => {
-        await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days`, {
+        const res = await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newDay)
+            body: JSON.stringify({ ...newDay, project_id: activeProject.id })
         });
+        const createdDay = await res.json();
         fetchProjectData(activeProject.id);
+        return createdDay;
     };
 
     const handleUploadCracks = async (dayId, distances) => {
@@ -137,6 +139,15 @@ function App() {
         newConflicts.splice(index, 1);
         setConflicts(newConflicts);
         if (newConflicts.length === 0) fetchProjectData(activeProject.id);
+    };
+
+    const handleDeleteDay = async (dayId) => {
+        if (!window.confirm("Are you sure you want to delete this survey day and all its measurements? This cannot be undone.")) return;
+
+        await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days/${dayId}`, {
+            method: 'DELETE'
+        });
+        fetchProjectData(activeProject.id);
     };
 
     const handleUpdateDay = async (dayId, updatedDay) => {
@@ -178,32 +189,47 @@ function App() {
 
     const handleUpdateProject = async (projectId, newName) => {
         try {
-            await fetch(`${API_BASE}/projects/${projectId}`, {
+            const res = await fetch(`${API_BASE}/projects/${projectId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newName })
             });
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.detail || 'Failed to update project');
+            }
             fetchProjects();
         } catch (err) {
             console.error("Failed to update project:", err);
+            alert(`Error updating project: ${err.message}`);
         }
     };
 
     const handleDeleteProject = async (projectId) => {
         try {
-            await fetch(`${API_BASE}/projects/${projectId}`, { method: 'DELETE' });
+            const res = await fetch(`${API_BASE}/projects/${projectId}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.detail || 'Failed to delete project');
+            }
             fetchProjects();
         } catch (err) {
             console.error("Failed to delete project:", err);
+            alert(`Error deleting project: ${err.message}`);
         }
     };
 
     const handleDuplicateProject = async (projectId) => {
         try {
-            await fetch(`${API_BASE}/projects/${projectId}/duplicate`, { method: 'POST' });
+            const res = await fetch(`${API_BASE}/projects/${projectId}/duplicate`, { method: 'POST' });
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.detail || 'Failed to duplicate project');
+            }
             fetchProjects();
         } catch (err) {
             console.error("Failed to duplicate project:", err);
+            alert(`Error duplicating project: ${err.message}`);
         }
     };
 
@@ -292,6 +318,7 @@ function App() {
                             onDelete={handleDeleteCrack}
                             onUpdate={handleUpdateCrack}
                             onUpdateDay={handleUpdateDay}
+                            onDeleteDay={handleDeleteDay}
                             onAddDay={handleAddDay}
                             onBulkDelete={handleBulkDelete}
                             onReorderDays={handleReorderDays}

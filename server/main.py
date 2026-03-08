@@ -5,8 +5,9 @@ server_dir = os.path.dirname(os.path.abspath(__file__))
 if server_dir not in sys.path:
     sys.path.append(server_dir)
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from typing import List, Dict, Any
 import logic
 from models import Section, SurveyDay, Crack, ProjectMetadata
@@ -21,9 +22,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"CRITICAL ERROR: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "multi-project-v1"}
+    return {"status": "ok", "version": "multi-project-v3"}
 
 @app.get("/projects")
 def get_projects():
@@ -62,15 +76,43 @@ def update_sections(project_id: int, sections: List[Section]):
 
 @app.post("/projects/{project_id}/survey-days")
 def add_survey_day(project_id: int, day: SurveyDay):
-    supabase.table("survey_days").insert({
-        "id": day.id,
-        "name": day.name,
-        "date": str(day.date),
-        "color": day.color,
-        "order_index": day.order_index,
-        "project_id": project_id
-    }).execute()
-    return {"status": "success"}
+    # Fetch current max ID to avoid sequence issues
+    res = supabase.table("survey_days").select("id").order("id", desc=True).limit(1).execute()
+    max_id = res.data[0]["id"] if res.data else 0
+    
+    # Adaptive ID assignment: try max_id + 1, then increment if collision occurs
+    next_id = max_id + 1
+    for _ in range(10): # retry a few times if there are sparse higher IDs
+        try:
+            payload = {
+                "id": next_id,
+                "name": day.name,
+                "date": str(day.date),
+                "color": day.color,
+                "order_index": day.order_index,
+                "project_id": project_id
+            }
+            result = supabase.table("survey_days").insert(payload).execute()
+            if result.data:
+                return result.data[0]
+            break
+        except Exception as e:
+            if "duplicate key" in str(e).lower():
+                next_id += 1
+                continue
+            raise e
+            
+    raise HTTPException(status_code=500, detail="Could not generate a unique ID for Survey Day")
+
+@app.delete("/projects/{project_id}/survey-days/{day_id}")
+def delete_survey_day(project_id: int, day_id: int):
+    # Delete associated cracks first
+    supabase.table("cracks").delete().eq("day_id", day_id).eq("project_id", project_id).execute()
+    # Delete the day
+    result = supabase.table("survey_days").delete().eq("id", day_id).eq("project_id", project_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Survey day not found")
+    return {"status": "deleted"}
 
 @app.post("/projects/{project_id}/survey-days/reorder")
 def reorder_survey_days(project_id: int, day_ids: List[int] = Body(...)):
@@ -153,5 +195,5 @@ def update_crack(project_id: int, crack_id: int, distance: float):
 
 if __name__ == "__main__":
     import uvicorn
-    # Using the app object directly to avoid module path issues
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # Using string path and app_dir to allow reload=True working correctly from any CWD
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, app_dir=server_dir)

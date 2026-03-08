@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 
-const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateDay, onAddDay, onBulkDelete, onReorderDays }) => {
+const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateDay, onDeleteDay, onAddDay, onBulkDelete, onReorderDays }) => {
     const [dayId, setDayId] = useState('');
     const [bulkData, setBulkData] = useState('');
     const [color, setColor] = useState('#2563eb');
@@ -88,24 +88,21 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
         }
     };
 
-    const handleAddDay = () => {
+    const handleAddDay = async () => {
         if (!newDayName.trim()) return;
-
-        const nextId = surveyDays.length > 0
-            ? Math.max(...surveyDays.map(d => d.id)) + 1
-            : 1;
 
         const dateStr = new Date().toISOString().split('T')[0];
 
-        onAddDay({
-            id: nextId,
+        const createdDay = await onAddDay({
             name: newDayName.trim(),
             date: dateStr,
             color: color
         });
 
         setNewDayName('');
-        setDayId(String(nextId));
+        if (createdDay && createdDay.id) {
+            setDayId(String(createdDay.id));
+        }
     };
 
     // ── Checkbox selection ────────────────────────────────
@@ -301,6 +298,12 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
                                         style={{ background: 'transparent', color: '#2563eb', padding: '0.2rem 0.5rem', fontSize: '0.8rem', border: '1px solid #2563eb', borderRadius: '5px' }}
                                     >
                                         ✏️ Rename
+                                    </button>
+                                    <button
+                                        onClick={() => onDeleteDay(selectedDay.id)}
+                                        style={{ background: 'transparent', color: '#ef4444', padding: '0.2rem 0.5rem', fontSize: '0.8rem', border: '1px solid #ef4444', borderRadius: '5px' }}
+                                    >
+                                        🗑️ Delete
                                     </button>
                                 </div>
                             )}

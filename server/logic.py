@@ -44,7 +44,7 @@ def save_data(data: ProjectMetadata):
     cracks_to_insert = []
     cracks_to_update = []
     for c in data.cracks:
-        cd = {"distance": c.distance, "day_id": c.day_id, "section_id": c.section_id}
+        cd = {"distance": c.distance, "day_id": c.day_id, "section_id": c.section_id, "project_id": data.project_id}
         if c.id is not None:
             cd["id"] = c.id
             cracks_to_update.append(cd)
@@ -65,29 +65,66 @@ def list_projects() -> List[dict]:
     return res.data
 
 def create_project(name: str) -> dict:
-    res = supabase.table("projects").insert({"name": name}).execute()
-    new_project = res.data[0] if res.data else {}
-    if new_project:
-        # Initialize default metadata for the new project
-        supabase.table("project_metadata").insert({"project_id": new_project["id"], "tolerance": 0.1}).execute()
-    return new_project
+    print(f"DEBUG: create_project start for name='{name}'")
+    try:
+        # 1. Insert the project
+        supabase.table("projects").insert({"name": name}).execute()
+        print(f"DEBUG: Insert finished")
+        
+        # 2. Fetch the ID explicitly
+        res = supabase.table("projects").select("*").eq("name", name).order("created_at", desc=True).limit(1).execute()
+        print(f"DEBUG: Retrieval result data: {res.data}")
+        
+        if not res.data:
+            print(f"DEBUG ERROR: Could not retrieve project '{name}' after insertion.")
+            return {}
+        
+        new_project = res.data[0]
+        print(f"DEBUG: new_project dictionary: {new_project}")
+        
+        p_id = new_project.get("id")
+        print(f"DEBUG: extracted p_id: {p_id}")
+        
+        if p_id is None:
+            print("DEBUG ERROR: p_id is None!")
+            return {}
+
+        # 3. Initialize metadata
+        payload = {"project_id": p_id, "tolerance": 0.1}
+        print(f"DEBUG: About to upsert metadata with payload: {payload}")
+        meta_res = supabase.table("project_metadata").upsert(payload).execute()
+        print(f"DEBUG: Metadata upsert finished. Data: {meta_res.data}")
+        
+        return new_project
+    except Exception as e:
+        print(f"DEBUG EXCEPTION in create_project: {e}")
+        return {}
 
 def update_project(project_id: int, name: str) -> dict:
+    print(f"Updating project {project_id} to name: {name}")
     res = supabase.table("projects").update({"name": name}).eq("id", project_id).execute()
+    print(f"Update result: {res.data}")
     return res.data[0] if res.data else {}
 
 def delete_project(project_id: int):
+    print(f"Deleting project: {project_id}")
     # Cascading deletes (Supabase should handle this if foreign keys are set to CASCADE, 
     # but we can do it explicitly for safety or if not configured)
     supabase.table("cracks").delete().eq("project_id", project_id).execute()
     supabase.table("survey_days").delete().eq("project_id", project_id).execute()
     supabase.table("sections").delete().eq("project_id", project_id).execute()
     supabase.table("project_metadata").delete().eq("project_id", project_id).execute()
-    supabase.table("projects").delete().eq("id", project_id).execute()
+    res = supabase.table("projects").delete().eq("id", project_id).execute()
+    print(f"Delete result: {res.data}")
 
 def duplicate_project(project_id: int) -> dict:
     # 1. Load original data
-    original_project = supabase.table("projects").select("*").eq("id", project_id).execute().data[0]
+    projects_res = supabase.table("projects").select("*").eq("id", project_id).execute()
+    if not projects_res.data:
+        print(f"Error: Project {project_id} not found for duplication")
+        return {}
+    
+    original_project = projects_res.data[0]
     data = load_data(project_id)
     
     # 2. Create new project

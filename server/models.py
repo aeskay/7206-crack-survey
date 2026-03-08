@@ -22,12 +22,12 @@ class Crack(BaseModel):
     project_id: int
 
 class SurveyDay(BaseModel):
-    id: int
+    id: Optional[int] = None
     name: str # e.g., "Day 7"
     date: date
     color: str # hex color code
     order_index: int = 0
-    project_id: int
+    project_id: Optional[int] = None
 
 class ProjectMetadata(BaseModel):
     sections: List[Section] = []

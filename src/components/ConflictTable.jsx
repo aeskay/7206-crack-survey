@@ -5,7 +5,7 @@ const ConflictTable = ({ conflicts, onResolve }) => {
 
     return (
         <div className="card" style={{ borderColor: '#ef4444', borderWeight: '2px' }}>
-            <h2 className="title" style={{ color: '#ef4444', webkitTextFillColor: '#ef4444' }}>Potential Duplicates Detected</h2>
+            <h2 className="title" style={{ color: '#ef4444', WebkitTextFillColor: '#ef4444' }}>Potential Duplicates Detected</h2>
             <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                 <thead>
                     <tr style={{ background: '#fef2f2' }}>
