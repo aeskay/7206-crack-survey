@@ -1,0 +1,157 @@
+import os
+import sys
+# Ensure the server directory is in the path for imports
+server_dir = os.path.dirname(os.path.abspath(__file__))
+if server_dir not in sys.path:
+    sys.path.append(server_dir)
+
+from fastapi import FastAPI, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List, Dict, Any
+import logic
+from models import Section, SurveyDay, Crack, ProjectMetadata
+from database import supabase
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "version": "multi-project-v1"}
+
+@app.get("/projects")
+def get_projects():
+    return logic.list_projects()
+
+@app.post("/projects")
+def create_project(name: str = Body(..., embed=True)):
+    return logic.create_project(name)
+
+@app.put("/projects/{project_id}")
+def update_project(project_id: int, name: str = Body(..., embed=True)):
+    return logic.update_project(project_id, name)
+
+@app.delete("/projects/{project_id}")
+def delete_project(project_id: int):
+    logic.delete_project(project_id)
+    return {"status": "success"}
+
+@app.post("/projects/{project_id}/duplicate")
+def duplicate_project(project_id: int):
+    return logic.duplicate_project(project_id)
+
+@app.get("/projects/{project_id}/data", response_model=ProjectMetadata)
+def get_data(project_id: int):
+    return logic.load_data(project_id)
+
+@app.post("/projects/{project_id}/sections")
+def update_sections(project_id: int, sections: List[Section]):
+    data = logic.load_data(project_id)
+    data.sections = sections
+    # Re-assign sections for all cracks
+    for crack in data.cracks:
+        crack.section_id = logic.get_section_for_distance(crack.distance, sections)
+    logic.save_data(data)
+    return {"status": "success"}
+
+@app.post("/projects/{project_id}/survey-days")
+def add_survey_day(project_id: int, day: SurveyDay):
+    supabase.table("survey_days").insert({
+        "id": day.id,
+        "name": day.name,
+        "date": str(day.date),
+        "color": day.color,
+        "order_index": day.order_index,
+        "project_id": project_id
+    }).execute()
+    return {"status": "success"}
+
+@app.post("/projects/{project_id}/survey-days/reorder")
+def reorder_survey_days(project_id: int, day_ids: List[int] = Body(...)):
+    # Expects a list of day_ids in their new visual order
+    for index, d_id in enumerate(day_ids):
+        supabase.table("survey_days").update({"order_index": index}).eq("id", d_id).eq("project_id", project_id).execute()
+    return {"status": "success"}
+
+@app.put("/projects/{project_id}/survey-days/{day_id}")
+def update_survey_day(project_id: int, day_id: int, day: SurveyDay):
+    result = supabase.table("survey_days").update({
+        "name": day.name,
+        "date": str(day.date),
+        "color": day.color,
+        "order_index": day.order_index
+    }).eq("id", day_id).eq("project_id", project_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Survey day not found")
+    return {"status": "updated"}
+
+@app.post("/projects/{project_id}/upload-cracks")
+def upload_cracks(project_id: int, day_id: int, distances: List[float]):
+    data = logic.load_data(project_id)
+    conflicts = logic.detect_conflicts(distances, day_id, data.tolerance, data.cracks)
+
+    conflict_distances = {c["new_distance"] for c in conflicts}
+    non_conflicting = [d for d in distances if d not in conflict_distances]
+
+    # Insert non-conflicting cracks directly into Supabase right away
+    if non_conflicting:
+        rows = []
+        for dist in non_conflicting:
+            sec_id = logic.get_section_for_distance(dist, data.sections)
+            rows.append({"distance": dist, "day_id": day_id, "section_id": sec_id, "project_id": project_id})
+        supabase.table("cracks").insert(rows).execute()
+
+    if conflicts:
+        return {"status": "conflict", "conflicts": conflicts, "added": len(non_conflicting)}
+
+    return {"status": "success", "added": len(non_conflicting)}
+
+@app.post("/projects/{project_id}/resolve-conflicts")
+def resolve_conflicts(project_id: int, resolutions: List[Dict[str, Any]]):
+    # resolutions item: {"type": "keep/merge/discard", "new_distance": ..., "existing_id": ..., "day_id": ...}
+    data = logic.load_data(project_id)
+    # Simplified resolution logic for now
+    for res in resolutions:
+        if res["type"] == "keep":
+            sec_id = logic.get_section_for_distance(res["new_distance"], data.sections)
+            data.cracks.append(Crack(distance=res["new_distance"], day_id=res["day_id"], section_id=sec_id, project_id=project_id))
+        elif res["type"] == "merge":
+            # Update existing crack distance if needed? Or just keep existing.
+            pass
+        # discard does nothing
+    
+    logic.save_data(data)
+    return {"status": "success"}
+
+@app.delete("/projects/{project_id}/cracks/{crack_id}")
+def delete_crack(project_id: int, crack_id: int):
+    supabase.table("cracks").delete().eq("id", crack_id).eq("project_id", project_id).execute()
+    return {"status": "deleted"}
+
+@app.post("/projects/{project_id}/cracks/bulk-delete")
+def bulk_delete_cracks(project_id: int, crack_ids: List[int]):
+    if not crack_ids:
+        return {"status": "deleted", "count": 0}
+    supabase.table("cracks").delete().in_("id", crack_ids).eq("project_id", project_id).execute()
+    return {"status": "deleted", "count": len(crack_ids)}
+
+@app.put("/projects/{project_id}/cracks/{crack_id}")
+def update_crack(project_id: int, crack_id: int, distance: float):
+    data = logic.load_data(project_id)
+    section_id = logic.get_section_for_distance(distance, data.sections)
+    supabase.table("cracks").update({
+        "distance": distance,
+        "section_id": section_id
+    }).eq("id", crack_id).eq("project_id", project_id).execute()
+    return {"status": "updated"}
+
+if __name__ == "__main__":
+    import uvicorn
+    # Using the app object directly to avoid module path issues
+    uvicorn.run(app, host="127.0.0.1", port=8000)

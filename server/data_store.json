@@ -1,0 +1,73 @@
+{
+    "sections": [
+        {
+            "id": 0,
+            "name": "Section 0",
+            "start_station": 0.0,
+            "end_station": 158.0
+        },
+        {
+            "id": 1,
+            "name": "Section 1",
+            "start_station": 158.0,
+            "end_station": 331.0
+        }
+    ],
+    "survey_days": [
+        {
+            "id": 1,
+            "name": "Day 1",
+            "date": "2026-03-01",
+            "color": "#2563eb"
+        },
+        {
+            "id": 2,
+            "name": "Day 7",
+            "date": "2026-03-07",
+            "color": "#ef4444"
+        }
+    ],
+    "cracks": [
+        {
+            "distance": 10.5,
+            "day_id": 1,
+            "section_id": 0
+        },
+        {
+            "distance": 22.1,
+            "day_id": 1,
+            "section_id": 0
+        },
+        {
+            "distance": 45.8,
+            "day_id": 1,
+            "section_id": 0
+        },
+        {
+            "distance": 165.0,
+            "day_id": 1,
+            "section_id": 1
+        },
+        {
+            "distance": 180.2,
+            "day_id": 1,
+            "section_id": 1
+        },
+        {
+            "distance": 12.0,
+            "day_id": 2,
+            "section_id": 0
+        },
+        {
+            "distance": 35.5,
+            "day_id": 2,
+            "section_id": 0
+        },
+        {
+            "distance": 172.4,
+            "day_id": 2,
+            "section_id": 1
+        }
+    ],
+    "tolerance": 0.1
+}
