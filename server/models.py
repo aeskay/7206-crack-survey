@@ -8,11 +8,12 @@ class Project(BaseModel):
     created_at: Optional[str] = None
 
 class Section(BaseModel):
-    id: int
+    id: Optional[int] = None
     name: str
     start_station: float
     end_station: float
-    project_id: int
+    steel_ratio: float = 0.0
+    project_id: Optional[int] = None
 
 class Crack(BaseModel):
     id: Optional[int] = None

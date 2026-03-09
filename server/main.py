@@ -66,12 +66,36 @@ def get_data(project_id: int):
 
 @app.post("/projects/{project_id}/sections")
 def update_sections(project_id: int, sections: List[Section]):
-    data = logic.load_data(project_id)
-    data.sections = sections
-    # Re-assign sections for all cracks
-    for crack in data.cracks:
-        crack.section_id = logic.get_section_for_distance(crack.distance, sections)
-    logic.save_data(data)
+    # Build dicts, stamp project_id, strip temp IDs
+    sec_dicts = []
+    for s in sections:
+        d = s.dict()
+        d["project_id"] = project_id
+        if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):
+            d.pop("id", None)
+        sec_dicts.append(d)
+
+    # Upsert sections
+    if sec_dicts:
+        result = supabase.table("sections").upsert(sec_dicts).execute()
+        saved_ids = [row["id"] for row in result.data] if result.data else []
+    else:
+        saved_ids = []
+
+    # Delete sections removed by the user
+    existing = supabase.table("sections").select("id").eq("project_id", project_id).execute()
+    for row in existing.data:
+        if row["id"] not in saved_ids:
+            supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
+            supabase.table("sections").delete().eq("id", row["id"]).execute()
+
+    # Re-assign crack section_ids based on new section boundaries
+    cracks_res = supabase.table("cracks").select("*").eq("project_id", project_id).execute()
+    updated_sections = [Section(**row) for row in supabase.table("sections").select("*").eq("project_id", project_id).execute().data]
+    for crack in cracks_res.data:
+        new_sec = logic.get_section_for_distance(crack["distance"], updated_sections)
+        supabase.table("cracks").update({"section_id": new_sec}).eq("id", crack["id"]).execute()
+
     return {"status": "success"}
 
 @app.post("/projects/{project_id}/survey-days")
@@ -196,4 +220,4 @@ def update_crack(project_id: int, crack_id: int, distance: float):
 if __name__ == "__main__":
     import uvicorn
     # Using string path and app_dir to allow reload=True working correctly from any CWD
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, app_dir=server_dir)
+    uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True, app_dir=server_dir)

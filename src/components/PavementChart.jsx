@@ -2,11 +2,12 @@ import React, { useState, useRef } from 'react';
 
 // --- Constants for the internal SVG coordinate system ---
 const VB_WIDTH = 1000;      // viewBox internal width (scales to container)
-const VB_HEIGHT = 195;      // just enough to fit labels below bar
+const VB_HEIGHT = 215;      // enough to fit labels above and below bar
 const PADDING = 40;
-const BAR_Y = 30;           // small top gap for section name labels
+const BAR_Y = 50;           // top gap for two-line section labels
 const BAR_HEIGHT = 100;     // bar height
-const LABEL_Y = BAR_Y - 8; // section name labels above bar
+const LABEL_Y = BAR_Y - 22; // section name (line 1)
+const STEEL_Y = BAR_Y - 10; // steel ratio (line 2)
 const STATION_Y = BAR_Y + BAR_HEIGHT + 28;  // numbers well below bar
 const AXIS_LABEL_Y = STATION_Y + 22;        // 'Station (ft)' below numbers
 const CRACK_STROKE = 0.8;   // thin enough to stay crisp at any zoom
@@ -368,6 +369,18 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                 {sec.name}
                             </text>
                             <text
+                                x={scale(
+                                    sec.start_station + (sec.end_station - sec.start_station) / 2,
+                                    totalLength
+                                )}
+                                y={STEEL_Y}
+                                fontSize="8"
+                                textAnchor="middle"
+                                fill="#94a3b8"
+                            >
+                                Steel: {sec.steel_ratio ?? 0}%
+                            </text>
+                            <text
                                 x={scale(sec.start_station, totalLength)}
                                 y={STATION_Y}
                                 fontSize="11"
@@ -524,6 +537,18 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                             Sta. {sec.start_station} – {sec.end_station}
                                         </span>
                                         <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                            <span
+                                                style={{
+                                                    background: '#10b981',
+                                                    color: '#fff',
+                                                    borderRadius: '999px',
+                                                    padding: '0.1rem 0.5rem',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                Steel: {sec.steel_ratio ?? 0}%
+                                            </span>
                                             <span
                                                 style={{
                                                     background: '#3b82f6',

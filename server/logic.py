@@ -24,16 +24,31 @@ def save_data(data: ProjectMetadata):
     supabase.table("project_metadata").upsert([{"project_id": data.project_id, "tolerance": data.tolerance}], on_conflict="project_id").execute()
 
     # --- Sections: upsert kept ones, delete removed ones ---
-    kept_section_ids = [s.id for s in data.sections if s.id is not None]
+    kept_section_ids = []
     if data.sections:
-        sec_dicts = [json.loads(s.json()) for s in data.sections]
-        supabase.table("sections").upsert(sec_dicts).execute()
+        sec_dicts = []
+        for s in data.sections:
+            d = s.dict()
+            d["project_id"] = data.project_id
+            # Strip temporary negative IDs so the DB auto-generates a real one
+            if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):
+                d.pop("id", None)
+            sec_dicts.append(d)
+
+        print(f"DEBUG: Saving sections: {sec_dicts}")
+        res = supabase.table("sections").upsert(sec_dicts).execute()
+        if res.data:
+            kept_section_ids = [row["id"] for row in res.data]
+
     # Delete sections no longer in the list for this project
-    existing_sec_res = supabase.table("sections").select("id").eq("project_id", data.project_id).execute()
-    for row in existing_sec_res.data:
-        if row["id"] not in kept_section_ids:
-            supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
-            supabase.table("sections").delete().eq("id", row["id"]).execute()
+    try:
+        existing_sec_res = supabase.table("sections").select("id").eq("project_id", data.project_id).execute()
+        for row in existing_sec_res.data:
+            if row["id"] not in kept_section_ids:
+                supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
+                supabase.table("sections").delete().eq("id", row["id"]).execute()
+    except Exception as e:
+        print(f"ERROR deleting sections: {e}")
 
     # --- Survey Days: upsert ---
     if data.survey_days:

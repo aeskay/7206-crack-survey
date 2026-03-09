@@ -111,6 +111,9 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                                             Sta. {sec.start_station} – {sec.end_station}
                                         </span>
                                         <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                            <span style={{ background: '#10b981', color: '#fff', borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                                                Steel: {sec.steel_ratio ?? 0}%
+                                            </span>
                                             <span style={{ background: '#3b82f6', color: '#fff', borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}>
                                                 {secCracks.length} cracks
                                             </span>

@@ -12,16 +12,17 @@ const SectionConfig = ({ sections, onSave }) => {
 
     const addSection = () => {
         const nextId = localSections.length > 0
-            ? Math.max(...localSections.map(s => s.id)) + 1
-            : 0;
+            ? Math.min(0, ...localSections.map(s => s.id)) - 1
+            : -1;
         const start = localSections.length > 0
             ? localSections[localSections.length - 1].end_station
             : 0;
         setLocalSections([...localSections, {
             id: nextId,
-            name: `Section ${nextId}`,
+            name: `Section ${Math.abs(nextId)}`,
             start_station: start,
-            end_station: start + 100
+            end_station: start + 100,
+            steel_ratio: 0
         }]);
     };
 
@@ -31,14 +32,14 @@ const SectionConfig = ({ sections, onSave }) => {
     };
 
     const updateSection = (index, field, value) => {
-        const updated = [...localSections];
-        // Name stays a string; station fields are numeric
-        if (field === 'name') {
-            updated[index][field] = value;
-        } else {
-            const parsed = parseFloat(value);
-            updated[index][field] = isNaN(parsed) ? 0 : parsed;
-        }
+        const updated = localSections.map((sec, i) => {
+            if (i === index) {
+                if (field === 'name') return { ...sec, [field]: value };
+                const parsed = parseFloat(value);
+                return { ...sec, [field]: isNaN(parsed) ? 0 : parsed };
+            }
+            return sec;
+        });
         setLocalSections(updated);
     };
 
@@ -91,7 +92,7 @@ const SectionConfig = ({ sections, onSave }) => {
                             Delete
                         </button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: '0.75rem' }}>
                         <div>
                             <label>Name</label>
                             <input
@@ -114,6 +115,15 @@ const SectionConfig = ({ sections, onSave }) => {
                                 value={sec.end_station}
                                 onChange={(e) => updateSection(idx, 'end_station', e.target.value)}
                                 type="number"
+                            />
+                        </div>
+                        <div>
+                            <label>Steel Ratio (%)</label>
+                            <input
+                                value={sec.steel_ratio ?? 0}
+                                onChange={(e) => updateSection(idx, 'steel_ratio', e.target.value)}
+                                type="number"
+                                step="0.01"
                             />
                         </div>
                     </div>
