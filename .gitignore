@@ -4,6 +4,8 @@ dist
 dist-ssr
 *.local
 .venv/
+.venv*/
+venv/
 .env
 .vscode/
 __pycache__/
