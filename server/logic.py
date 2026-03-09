@@ -28,7 +28,7 @@ def save_data(data: ProjectMetadata):
     if data.sections:
         sec_dicts = []
         for s in data.sections:
-            d = s.dict()
+            d = json.loads(s.json())
             d["project_id"] = data.project_id
             # Strip temporary negative IDs so the DB auto-generates a real one
             if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):

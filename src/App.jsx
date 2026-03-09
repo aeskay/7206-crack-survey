@@ -27,6 +27,7 @@ function App() {
     const [activeTab, setActiveTab] = useState('sections');
     const [analysisType, setAnalysisType] = useState('overview');
     const [apiError, setApiError] = useState(false);
+    const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
     useEffect(() => {
         fetchProjects();
@@ -39,6 +40,7 @@ function App() {
     }, [activeProject]);
 
     const fetchProjects = async () => {
+        setIsLoadingProjects(true);
         try {
             const res = await fetch(`${API_BASE}/projects`);
             const json = await res.json();
@@ -54,6 +56,8 @@ function App() {
         } catch (err) {
             console.error("Failed to fetch projects:", err);
             setApiError(true);
+        } finally {
+            setIsLoadingProjects(false);
         }
     };
 
@@ -243,6 +247,7 @@ function App() {
                 )}
                 <ProjectSelection
                     projects={projects}
+                    isLoading={isLoadingProjects}
                     onSelectProject={setActiveProject}
                     onCreateProject={handleCreateProject}
                     onUpdateProject={handleUpdateProject}

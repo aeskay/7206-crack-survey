@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const ProjectSelection = ({ projects, onSelectProject, onCreateProject, onUpdateProject, onDeleteProject, onDuplicateProject }) => {
+const ProjectSelection = ({ projects, isLoading, onSelectProject, onCreateProject, onUpdateProject, onDeleteProject, onDuplicateProject }) => {
     const [newProjectName, setNewProjectName] = useState('');
     const [isCreating, setIsCreating] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
@@ -54,135 +54,175 @@ const ProjectSelection = ({ projects, onSelectProject, onCreateProject, onUpdate
                     </p>
                 </div>
 
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                    gap: '1.5rem',
-                    marginBottom: '3rem'
-                }}>
-                    {Array.isArray(projects) && projects.map(project => (
+                {isLoading ? (
+                    <div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', marginBottom: '2rem', color: '#64748b' }}>
+                            <div className="ps-spinner"></div>
+                            <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Loading your projects…</span>
+                        </div>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                            gap: '1.5rem',
+                            marginBottom: '3rem'
+                        }}>
+                            {[0, 1, 2].map(i => (
+                                <div key={i} className="skeleton-card" style={{
+                                    background: '#ffffff',
+                                    borderRadius: '16px',
+                                    padding: '1.5rem',
+                                    border: '1px solid #e2e8f0',
+                                    minHeight: '200px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.75rem'
+                                }}>
+                                    <div className="skeleton-shimmer" style={{ width: '40px', height: '40px', borderRadius: '10px' }}></div>
+                                    <div className="skeleton-shimmer" style={{ width: '70%', height: '20px', borderRadius: '6px', marginTop: '0.5rem' }}></div>
+                                    <div className="skeleton-shimmer" style={{ width: '45%', height: '14px', borderRadius: '6px' }}></div>
+                                    <div style={{ flex: 1 }}></div>
+                                    <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                                        <div className="skeleton-shimmer" style={{ width: '28px', height: '28px', borderRadius: '6px' }}></div>
+                                        <div className="skeleton-shimmer" style={{ width: '28px', height: '28px', borderRadius: '6px' }}></div>
+                                        <div className="skeleton-shimmer" style={{ width: '28px', height: '28px', borderRadius: '6px' }}></div>
+                                        <div style={{ flex: 1 }}></div>
+                                        <div className="skeleton-shimmer" style={{ width: '64px', height: '28px', borderRadius: '6px' }}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                        gap: '1.5rem',
+                        marginBottom: '3rem'
+                    }}>
+                        {Array.isArray(projects) && projects.map(project => (
+                            <div
+                                key={project.id}
+                                className="project-card"
+                                style={{
+                                    background: '#ffffff',
+                                    borderRadius: '16px',
+                                    padding: '1.5rem',
+                                    cursor: 'default',
+                                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    border: '1px solid #e2e8f0',
+                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    justifyContent: 'space-between',
+                                    minHeight: '200px',
+                                    position: 'relative'
+                                }}
+                            >
+                                <div onClick={() => onSelectProject(project)} style={{ cursor: 'pointer' }}>
+                                    <div style={{
+                                        width: '40px',
+                                        height: '40px',
+                                        background: '#eff6ff',
+                                        borderRadius: '10px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        color: '#2563eb',
+                                        marginBottom: '1rem'
+                                    }}>
+                                        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                        </svg>
+                                    </div>
+                                    <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.25rem' }}>
+                                        {project.name}
+                                    </h3>
+                                    <p style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
+                                        Created {new Date(project.created_at).toLocaleDateString()}
+                                    </p>
+                                </div>
+
+                                <div style={{
+                                    display: 'flex',
+                                    gap: '0.5rem',
+                                    marginTop: '1.5rem',
+                                    paddingTop: '1rem',
+                                    borderTop: '1px solid #f1f5f9'
+                                }}>
+                                    <button
+                                        onClick={() => { setEditingProject(project); setEditName(project.name); }}
+                                        title="Rename"
+                                        style={{ background: 'none', border: 'none', padding: '5px', cursor: 'pointer', color: '#64748b' }}
+                                    >
+                                        ✏️
+                                    </button>
+                                    <button
+                                        onClick={() => onDuplicateProject(project.id)}
+                                        title="Duplicate"
+                                        style={{ background: 'none', border: 'none', padding: '5px', cursor: 'pointer', color: '#64748b' }}
+                                    >
+                                        👯
+                                    </button>
+                                    <button
+                                        onClick={() => setDeletingProject(project)}
+                                        title="Delete"
+                                        style={{ background: 'none', border: 'none', padding: '5px', cursor: 'pointer', color: '#ef4444' }}
+                                    >
+                                        🗑️
+                                    </button>
+                                    <div style={{ flex: 1 }}></div>
+                                    <button
+                                        onClick={() => onSelectProject(project)}
+                                        style={{
+                                            background: '#2563eb',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 600,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Open →
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+
                         <div
-                            key={project.id}
-                            className="project-card"
+                            onClick={() => setIsCreating(true)}
                             style={{
-                                background: '#ffffff',
+                                background: 'rgba(255, 255, 255, 0.5)',
                                 borderRadius: '16px',
                                 padding: '1.5rem',
-                                cursor: 'default',
-                                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                border: '1px solid #e2e8f0',
-                                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                                cursor: 'pointer',
+                                transition: 'all 0.3s ease',
+                                border: '2px dashed #cbd5e1',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                justifyContent: 'center',
                                 minHeight: '200px',
-                                position: 'relative'
+                                color: '#64748b'
                             }}
+                            className="add-project-card"
                         >
-                            <div onClick={() => onSelectProject(project)} style={{ cursor: 'pointer' }}>
-                                <div style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    background: '#eff6ff',
-                                    borderRadius: '10px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: '#2563eb',
-                                    marginBottom: '1rem'
-                                }}>
-                                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                    </svg>
-                                </div>
-                                <h3 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1e293b', marginBottom: '0.25rem' }}>
-                                    {project.name}
-                                </h3>
-                                <p style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
-                                    Created {new Date(project.created_at).toLocaleDateString()}
-                                </p>
-                            </div>
-
                             <div style={{
+                                width: '40px',
+                                height: '40px',
+                                borderRadius: '50%',
+                                background: '#f1f5f9',
                                 display: 'flex',
-                                gap: '0.5rem',
-                                marginTop: '1.5rem',
-                                paddingTop: '1rem',
-                                borderTop: '1px solid #f1f5f9'
-                            }}>
-                                <button
-                                    onClick={() => { setEditingProject(project); setEditName(project.name); }}
-                                    title="Rename"
-                                    style={{ background: 'none', border: 'none', padding: '5px', cursor: 'pointer', color: '#64748b' }}
-                                >
-                                    ✏️
-                                </button>
-                                <button
-                                    onClick={() => onDuplicateProject(project.id)}
-                                    title="Duplicate"
-                                    style={{ background: 'none', border: 'none', padding: '5px', cursor: 'pointer', color: '#64748b' }}
-                                >
-                                    👯
-                                </button>
-                                <button
-                                    onClick={() => setDeletingProject(project)}
-                                    title="Delete"
-                                    style={{ background: 'none', border: 'none', padding: '5px', cursor: 'pointer', color: '#ef4444' }}
-                                >
-                                    🗑️
-                                </button>
-                                <div style={{ flex: 1 }}></div>
-                                <button
-                                    onClick={() => onSelectProject(project)}
-                                    style={{
-                                        background: '#2563eb',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.8rem',
-                                        fontWeight: 600,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Open →
-                                </button>
-                            </div>
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginBottom: '0.75rem',
+                                fontSize: '1.5rem'
+                            }}>+</div>
+                            <span style={{ fontWeight: 600 }}>Create New Project</span>
                         </div>
-                    ))}
-
-                    <div
-                        onClick={() => setIsCreating(true)}
-                        style={{
-                            background: 'rgba(255, 255, 255, 0.5)',
-                            borderRadius: '16px',
-                            padding: '1.5rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.3s ease',
-                            border: '2px dashed #cbd5e1',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            minHeight: '200px',
-                            color: '#64748b'
-                        }}
-                        className="add-project-card"
-                    >
-                        <div style={{
-                            width: '40px',
-                            height: '40px',
-                            borderRadius: '50%',
-                            background: '#f1f5f9',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginBottom: '0.75rem',
-                            fontSize: '1.5rem'
-                        }}>+</div>
-                        <span style={{ fontWeight: 600 }}>Create New Project</span>
                     </div>
-                </div>
+                )}
 
                 {isCreating && (
                     <Modal title="New Project" onClose={() => setIsCreating(false)}>
@@ -278,6 +318,27 @@ const ProjectSelection = ({ projects, onSelectProject, onCreateProject, onUpdate
                     background: #fff;
                     border-color: #2563eb;
                     color: #2563eb;
+                }
+                @keyframes shimmer {
+                    0% { background-position: -400px 0; }
+                    100% { background-position: 400px 0; }
+                }
+                .skeleton-shimmer {
+                    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+                    background-size: 800px 100%;
+                    animation: shimmer 1.4s infinite linear;
+                }
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                .ps-spinner {
+                    width: 20px;
+                    height: 20px;
+                    border: 3px solid #e2e8f0;
+                    border-top-color: #2563eb;
+                    border-radius: 50%;
+                    animation: spin 0.7s linear infinite;
+                    flex-shrink: 0;
                 }
                 `}
             </style>

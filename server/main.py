@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 # Ensure the server directory is in the path for imports
 server_dir = os.path.dirname(os.path.abspath(__file__))
 if server_dir not in sys.path:
@@ -66,37 +67,48 @@ def get_data(project_id: int):
 
 @app.post("/projects/{project_id}/sections")
 def update_sections(project_id: int, sections: List[Section]):
-    # Build dicts, stamp project_id, strip temp IDs
-    sec_dicts = []
-    for s in sections:
-        d = s.dict()
-        d["project_id"] = project_id
-        if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):
-            d.pop("id", None)
-        sec_dicts.append(d)
+    try:
+        # Build dicts, stamp project_id, strip temp IDs
+        sec_dicts = []
+        for s in sections:
+            d = json.loads(s.json())
+            d["project_id"] = project_id
+            if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):
+                d.pop("id", None)
+            sec_dicts.append(d)
 
-    # Upsert sections
-    if sec_dicts:
-        result = supabase.table("sections").upsert(sec_dicts).execute()
-        saved_ids = [row["id"] for row in result.data] if result.data else []
-    else:
+        # Upsert sections
         saved_ids = []
+        if sec_dicts:
+            result = supabase.table("sections").upsert(sec_dicts).execute()
+            if result.data:
+                saved_ids = [row["id"] for row in result.data]
 
-    # Delete sections removed by the user
-    existing = supabase.table("sections").select("id").eq("project_id", project_id).execute()
-    for row in existing.data:
-        if row["id"] not in saved_ids:
-            supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
-            supabase.table("sections").delete().eq("id", row["id"]).execute()
+        # Delete sections removed by the user
+        existing_res = supabase.table("sections").select("id").eq("project_id", project_id).execute()
+        existing_data = existing_res.data or []
+        for row in existing_data:
+            if row["id"] not in saved_ids:
+                supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
+                supabase.table("sections").delete().eq("id", row["id"]).execute()
 
-    # Re-assign crack section_ids based on new section boundaries
-    cracks_res = supabase.table("cracks").select("*").eq("project_id", project_id).execute()
-    updated_sections = [Section(**row) for row in supabase.table("sections").select("*").eq("project_id", project_id).execute().data]
-    for crack in cracks_res.data:
-        new_sec = logic.get_section_for_distance(crack["distance"], updated_sections)
-        supabase.table("cracks").update({"section_id": new_sec}).eq("id", crack["id"]).execute()
+        # Re-assign crack section_ids based on new section boundaries
+        cracks_res = supabase.table("cracks").select("*").eq("project_id", project_id).execute()
+        cracks_data = cracks_res.data or []
+        
+        # Fetch updated sections
+        updated_sec_res = supabase.table("sections").select("*").eq("project_id", project_id).execute()
+        updated_sec_data = updated_sec_res.data or []
+        updated_sections = [Section(**row) for row in updated_sec_data]
+        
+        for crack in cracks_data:
+            new_sec = logic.get_section_for_distance(crack["distance"], updated_sections)
+            supabase.table("cracks").update({"section_id": new_sec}).eq("id", crack["id"]).execute()
 
-    return {"status": "success"}
+        return {"status": "success"}
+    except Exception as e:
+        print(f"ERROR in update_sections: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/projects/{project_id}/survey-days")
 def add_survey_day(project_id: int, day: SurveyDay):
