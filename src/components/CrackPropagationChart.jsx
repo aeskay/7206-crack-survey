@@ -41,10 +41,10 @@ const CrackPropagationChart = ({ cracks, surveyDays, sections }) => {
                     autosize: true,
                     margin: { l: 60, r: 30, t: 30, b: 70 },
                     xaxis: {
-                        title: { text: 'Survey Day', font: { size: 14 } },
+                        title: { text: '<b>Survey Day</b>', font: { size: 16 } },
                     },
                     yaxis: {
-                        title: { text: 'Cumulative Crack Count', font: { size: 14 } },
+                        title: { text: '<b>Cumulative Crack Count</b>', font: { size: 16 } },
                         rangemode: 'tozero'
                     },
                     legend: { orientation: 'h', y: -0.25 }

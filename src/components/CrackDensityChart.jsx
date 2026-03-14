@@ -43,10 +43,10 @@ const CrackDensityChart = ({ cracks, surveyDays, sections }) => {
                     barmode: 'stack', // Stacked bars make it easy to see total + what day contributed what
                     margin: { l: 60, r: 30, t: 30, b: 70 },
                     xaxis: {
-                        title: { text: 'Pavement Section', font: { size: 14 } },
+                        title: { text: '<b>Pavement Section</b>', font: { size: 16 } },
                     },
                     yaxis: {
-                        title: { text: 'Number of Cracks', font: { size: 14 } },
+                        title: { text: '<b>Number of Cracks</b>', font: { size: 16 } },
                     },
                     legend: { orientation: 'h', y: -0.25 }
                 }}

@@ -46,12 +46,12 @@ const FrequencyCommonLayout = {
     barmode: 'group',
     margin: { l: 70, r: 30, t: 30, b: 70 },
     xaxis: {
-        title: { text: 'Crack Spacing (ft)', font: { size: 14 } },
+        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16 } },
         tickangle: -45,
         type: 'category'
     },
     yaxis: {
-        title: { text: 'Frequency (Count)', font: { size: 14 } }
+        title: { text: '<b>Frequency (Count)</b>', font: { size: 16 } }
     },
     legend: { orientation: 'h', y: -0.3 }
 };

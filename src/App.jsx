@@ -7,6 +7,7 @@ import ConflictTable from './components/ConflictTable';
 import SCurveChart from './components/SCurveChart';
 import FrequencyChart from './components/FrequencyChart';
 import CrackPropagationChart from './components/CrackPropagationChart';
+import CrackSpacingChart from './components/CrackSpacingChart';
 import CrackDensityChart from './components/CrackDensityChart';
 import SpacingBoxPlotChart from './components/SpacingBoxPlotChart';
 import './index.css';
@@ -413,6 +414,11 @@ function App() {
                         )}
                         {analysisType === 'other' && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                                <CrackSpacingChart
+                                    sections={data.sections}
+                                    cracks={data.cracks}
+                                    surveyDays={data.survey_days}
+                                />
                                 <CrackPropagationChart
                                     sections={data.sections}
                                     cracks={data.cracks}

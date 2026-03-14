@@ -38,10 +38,10 @@ const SpacingBoxPlotChart = ({ cracks, sections }) => {
                     autosize: true,
                     margin: { l: 60, r: 30, t: 30, b: 70 },
                     xaxis: {
-                        title: { text: 'Pavement Section', font: { size: 14 } },
+                        title: { text: '<b>Pavement Section</b>', font: { size: 16 } },
                     },
                     yaxis: {
-                        title: { text: 'Crack Spacing (ft)', font: { size: 14 } },
+                        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16 } },
                         rangemode: 'tozero'
                     },
                     showlegend: false // Legend is redundant since x-axis labels are section names

@@ -31,12 +31,12 @@ const SCurveCommonLayout = {
   autosize: true,
   margin: { l: 70, r: 30, t: 30, b: 70 },
   xaxis: {
-    title: { text: 'Crack Spacing (ft)', font: { size: 14 } },
+    title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16 } },
     dtick: 2,
     tick0: 0
   },
   yaxis: {
-    title: { text: 'Cumulative Percentage (%)', font: { size: 14 } },
+    title: { text: '<b>Cumulative Percentage (%)</b>', font: { size: 16 } },
     range: [0, 105]
   },
   legend: { orientation: 'h', y: -0.25 }
