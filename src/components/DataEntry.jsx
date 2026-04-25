@@ -185,7 +185,7 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
                 {/* Left column */}
                 <div>
                     <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>Survey Days</span>
+                        <span>Survey Days ({surveyDays.filter(d => d.name.trim().toUpperCase() !== 'ACC').length} Total)</span>
                         <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'normal' }}>Drag to reorder</span>
                     </label>
                     <div className="day-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '1.5rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '0.5rem' }}>
