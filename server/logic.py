@@ -98,10 +98,9 @@ def create_project(name: str) -> dict:
     if p_id is None:
         raise Exception("New project was inserted but returned no id.")
 
-    # 3. Insert metadata with an explicit id (table has no auto-increment sequence)
-    meta_id = _next_id("project_metadata")
-    supabase.table("project_metadata").insert({"id": meta_id, "project_id": p_id, "tolerance": 0.1}).execute()
-    print(f"DEBUG: create_project done. project_id={p_id}, meta_id={meta_id}")
+    # 3. Insert metadata — the check constraint requires id = project_id
+    supabase.table("project_metadata").insert({"id": p_id, "project_id": p_id, "tolerance": 0.1}).execute()
+    print(f"DEBUG: create_project done. project_id={p_id}")
     return new_project
 
 def update_project(project_id: int, name: str) -> dict:
