@@ -105,10 +105,12 @@ def create_project(name: str) -> dict:
             return {}
 
         # 3. Initialize metadata
-        payload = {"project_id": p_id, "tolerance": 0.1}
-        print(f"DEBUG: About to upsert metadata with payload: {payload}")
-        meta_res = supabase.table("project_metadata").upsert(payload).execute()
-        print(f"DEBUG: Metadata upsert finished. Data: {meta_res.data}")
+        res_id = supabase.table("project_metadata").select("id").order("id", desc=True).limit(1).execute()
+        next_id = (res_id.data[0]["id"] + 1) if res_id.data else 1
+        payload = [{"id": next_id, "project_id": p_id, "tolerance": 0.1}]
+        print(f"DEBUG: About to insert metadata with payload: {payload}")
+        meta_res = supabase.table("project_metadata").insert(payload).execute()
+        print(f"DEBUG: Metadata insert finished. Data: {meta_res.data}")
         
         return new_project
     except Exception as e:
@@ -147,8 +149,8 @@ def duplicate_project(project_id: int) -> dict:
     new_project = create_project(new_name)
     new_id = new_project["id"]
     
-    # 3. Copy Metadata
-    supabase.table("project_metadata").upsert([{"project_id": new_id, "tolerance": data.tolerance}]).execute()
+    # 3. Copy Metadata (row was already created by create_project, so just update it)
+    supabase.table("project_metadata").update({"tolerance": data.tolerance}).eq("project_id", new_id).execute()
     
     # 4. Copy Sections
     old_to_new_sec = {}
@@ -237,8 +239,8 @@ def import_data(project_id: int, data: ProjectMetadata) -> dict:
     supabase.table("survey_days").delete().eq("project_id", project_id).execute()
     supabase.table("sections").delete().eq("project_id", project_id).execute()
     
-    # 2. Update Metadata
-    supabase.table("project_metadata").upsert([{"project_id": project_id, "tolerance": data.tolerance}]).execute()
+    # 2. Update Metadata (row already exists, so update instead of upsert to avoid id issues)
+    supabase.table("project_metadata").update({"tolerance": data.tolerance}).eq("project_id", project_id).execute()
     
     # 3. Insert Sections & Build Map
     old_to_new_sec = {}
