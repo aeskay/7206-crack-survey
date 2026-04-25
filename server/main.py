@@ -120,20 +120,24 @@ def update_sections(project_id: int, sections: List[Section]):
 
 @app.post("/projects/{project_id}/survey-days")
 def add_survey_day(project_id: int, day: SurveyDay):
-    # Fetch current max ID to avoid sequence issues
+    # Calculate the next order_index for this project so the new day goes to the END
+    order_res = supabase.table("survey_days").select("order_index").eq("project_id", project_id).order("order_index", desc=True).limit(1).execute()
+    next_order = (order_res.data[0]["order_index"] + 1) if order_res.data else 0
+
+    # Fetch current max ID globally to avoid primary key conflicts
     res = supabase.table("survey_days").select("id").order("id", desc=True).limit(1).execute()
     max_id = res.data[0]["id"] if res.data else 0
     
-    # Adaptive ID assignment: try max_id + 1, then increment if collision occurs
+    # Adaptive ID assignment: retry if collision occurs
     next_id = max_id + 1
-    for _ in range(10): # retry a few times if there are sparse higher IDs
+    for _ in range(10):
         try:
             payload = {
                 "id": next_id,
                 "name": day.name,
                 "date": str(day.date),
                 "color": day.color,
-                "order_index": day.order_index,
+                "order_index": next_order,
                 "project_id": project_id
             }
             result = supabase.table("survey_days").insert(payload).execute()
