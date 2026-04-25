@@ -161,6 +161,10 @@ def duplicate_project(project_id: int) -> dict:
             res = supabase.table("sections").insert(sec_dict).execute()
             if res.data:
                 old_to_new_sec[old_id] = res.data[0]["id"]
+            else:
+                fetch_res = supabase.table("sections").select("id").eq("project_id", new_id).eq("name", sec.name).limit(1).execute()
+                if fetch_res.data:
+                    old_to_new_sec[old_id] = fetch_res.data[0]["id"]
 
     # 5. Copy Survey Days
     old_to_new_day = {}
@@ -173,6 +177,10 @@ def duplicate_project(project_id: int) -> dict:
             res = supabase.table("survey_days").insert(day_dict).execute()
             if res.data:
                 old_to_new_day[old_day_id] = res.data[0]["id"]
+            else:
+                fetch_res = supabase.table("survey_days").select("id").eq("project_id", new_id).eq("name", day.name).limit(1).execute()
+                if fetch_res.data:
+                    old_to_new_day[old_day_id] = fetch_res.data[0]["id"]
     
     # 6. Copy Cracks
     if data.cracks:
@@ -181,8 +189,16 @@ def duplicate_project(project_id: int) -> dict:
             c_dict = json.loads(crack.json())
             c_dict.pop("id", None)
             c_dict["project_id"] = new_id
-            c_dict["section_id"] = old_to_new_sec.get(c_dict["section_id"])
-            c_dict["day_id"] = old_to_new_day.get(c_dict["day_id"])
+            
+            # Use mapped section, or None if it was unmapped/null
+            c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
+            
+            new_day_id = old_to_new_day.get(c_dict.get("day_id"))
+            if new_day_id is None:
+                print(f"Skipping crack due to missing new day_id mapping: {c_dict}")
+                continue
+            
+            c_dict["day_id"] = new_day_id
             crack_dicts.append(c_dict)
         
         # Batch insert cracks (max 1000 at a time if needed, but here simple)
@@ -212,3 +228,68 @@ def calculate_spacing(cracks: List[Crack]) -> List[float]:
     for i in range(1, len(sorted_dists)):
         spacings.append(sorted_dists[i] - sorted_dists[i-1])
     return spacings
+
+def import_data(project_id: int, data: ProjectMetadata) -> dict:
+    print(f"Importing data for project {project_id}")
+    
+    # 1. Delete existing data for this project
+    supabase.table("cracks").delete().eq("project_id", project_id).execute()
+    supabase.table("survey_days").delete().eq("project_id", project_id).execute()
+    supabase.table("sections").delete().eq("project_id", project_id).execute()
+    
+    # 2. Update Metadata
+    supabase.table("project_metadata").upsert([{"project_id": project_id, "tolerance": data.tolerance}]).execute()
+    
+    # 3. Insert Sections & Build Map
+    old_to_new_sec = {}
+    if data.sections:
+        for sec in data.sections:
+            old_id = sec.id
+            sec_dict = json.loads(sec.json())
+            sec_dict.pop("id", None)
+            sec_dict["project_id"] = project_id
+            res = supabase.table("sections").insert(sec_dict).execute()
+            if res.data:
+                old_to_new_sec[old_id] = res.data[0]["id"]
+            else:
+                fetch_res = supabase.table("sections").select("id").eq("project_id", project_id).eq("name", sec.name).limit(1).execute()
+                if fetch_res.data:
+                    old_to_new_sec[old_id] = fetch_res.data[0]["id"]
+
+    # 4. Insert Survey Days & Build Map
+    old_to_new_day = {}
+    if data.survey_days:
+        for day in data.survey_days:
+            old_day_id = day.id
+            day_dict = json.loads(day.json())
+            day_dict.pop("id", None)
+            day_dict["project_id"] = project_id
+            res = supabase.table("survey_days").insert(day_dict).execute()
+            if res.data:
+                old_to_new_day[old_day_id] = res.data[0]["id"]
+            else:
+                fetch_res = supabase.table("survey_days").select("id").eq("project_id", project_id).eq("name", day.name).limit(1).execute()
+                if fetch_res.data:
+                    old_to_new_day[old_day_id] = fetch_res.data[0]["id"]
+    
+    # 5. Insert Cracks
+    if data.cracks:
+        crack_dicts = []
+        for crack in data.cracks:
+            c_dict = json.loads(crack.json())
+            c_dict.pop("id", None)
+            c_dict["project_id"] = project_id
+            
+            c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
+            
+            new_day_id = old_to_new_day.get(c_dict.get("day_id"))
+            if new_day_id is None:
+                continue
+                
+            c_dict["day_id"] = new_day_id
+            crack_dicts.append(c_dict)
+            
+        if crack_dicts:
+            supabase.table("cracks").insert(crack_dicts).execute()
+
+    return {"status": "success"}

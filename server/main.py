@@ -65,6 +65,14 @@ def duplicate_project(project_id: int):
 def get_data(project_id: int):
     return logic.load_data(project_id)
 
+@app.post("/projects/{project_id}/import")
+def import_project_data(project_id: int, data: ProjectMetadata):
+    try:
+        return logic.import_data(project_id, data)
+    except Exception as e:
+        print(f"ERROR in import_project_data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/projects/{project_id}/sections")
 def update_sections(project_id: int, sections: List[Section]):
     try:

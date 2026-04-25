@@ -10,6 +10,7 @@ import CrackPropagationChart from './components/CrackPropagationChart';
 import CrackSpacingChart from './components/CrackSpacingChart';
 import CrackDensityChart from './components/CrackDensityChart';
 import SpacingBoxPlotChart from './components/SpacingBoxPlotChart';
+import DataManagement from './components/DataManagement';
 import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8080';
@@ -18,6 +19,7 @@ const TABS = [
     { id: 'sections', label: '⚙️ Sections' },
     { id: 'data', label: '📋 Data Entry' },
     { id: 'charts', label: '📊 Dashboard' },
+    { id: 'management', label: '💾 Data Management' }
 ];
 
 function App() {
@@ -436,6 +438,15 @@ function App() {
                             </div>
                         )}
                     </div>
+                )}
+
+                {activeTab === 'management' && (
+                    <DataManagement 
+                        projectId={activeProject.id}
+                        projectData={data}
+                        apiBase={API_BASE}
+                        onImportComplete={() => fetchProjectData(activeProject.id)}
+                    />
                 )}
             </main>
         </div>
