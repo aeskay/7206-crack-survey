@@ -96,7 +96,8 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
         const createdDay = await onAddDay({
             name: newDayName.trim(),
             date: dateStr,
-            color: color
+            color: color,
+            order_index: surveyDays.length   // place at end of current list
         });
 
         setNewDayName('');
