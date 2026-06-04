@@ -72,36 +72,57 @@ def save_data(data: ProjectMetadata):
         supabase.table("cracks").insert(cracks_to_insert).execute()
 
 def get_section_for_distance(distance: float, sections: List[Section]) -> Optional[int]:
+    # First pass: normal boundary check (crack at exactly a boundary belongs to the NEXT section)
     for section in sections:
         if section.start_station <= distance < section.end_station:
             return section.id
+    
+    # Second pass fallback: if a crack is EXACTLY at the end station of a section, 
+    # and wasn't caught above (meaning it's the very last point of the project)
+    for section in sections:
+        if distance == section.end_station:
+            return section.id
+            
+    return None
 def list_projects() -> List[dict]:
     res = supabase.table("projects").select("*").order("created_at", desc=True).execute()
     return res.data
 
-def _next_id(table: str) -> int:
-    """Get the next safe ID for a table that lacks auto-increment."""
-    res = supabase.table(table).select("id").order("id", desc=True).limit(1).execute()
-    return (res.data[0]["id"] + 1) if res.data else 1
-
 def create_project(name: str) -> dict:
     print(f"DEBUG: create_project start for name='{name}'")
-    # 1. Insert the project (projects table has auto-increment, no id needed)
-    supabase.table("projects").insert({"name": name}).execute()
-    
-    # 2. Fetch the new project row
-    res = supabase.table("projects").select("*").eq("name", name).order("created_at", desc=True).limit(1).execute()
-    if not res.data:
-        raise Exception(f"Could not retrieve project '{name}' after insertion.")
-    new_project = res.data[0]
-    p_id = new_project.get("id")
-    if p_id is None:
-        raise Exception("New project was inserted but returned no id.")
+    try:
+        # 1. Insert the project
+        supabase.table("projects").insert({"name": name}).execute()
+        print(f"DEBUG: Insert finished")
+        
+        # 2. Fetch the ID explicitly
+        res = supabase.table("projects").select("*").eq("name", name).order("created_at", desc=True).limit(1).execute()
+        print(f"DEBUG: Retrieval result data: {res.data}")
+        
+        if not res.data:
+            print(f"DEBUG ERROR: Could not retrieve project '{name}' after insertion.")
+            return {}
+        
+        new_project = res.data[0]
+        print(f"DEBUG: new_project dictionary: {new_project}")
+        
+        p_id = new_project.get("id")
+        print(f"DEBUG: extracted p_id: {p_id}")
+        
+        if p_id is None:
+            print("DEBUG ERROR: p_id is None!")
+            return {}
 
-    # 3. Insert metadata — the check constraint requires id = project_id
-    supabase.table("project_metadata").insert({"id": p_id, "project_id": p_id, "tolerance": 0.1}).execute()
-    print(f"DEBUG: create_project done. project_id={p_id}")
-    return new_project
+        # 3. Initialize metadata
+        payload = {"project_id": p_id, "tolerance": 0.1}
+        print(f"DEBUG: About to upsert metadata with payload: {payload}")
+        meta_res = supabase.table("project_metadata").upsert(payload).execute()
+        print(f"DEBUG: Metadata upsert finished. Data: {meta_res.data}")
+        
+        return new_project
+    except Exception as e:
+        print(f"DEBUG EXCEPTION in create_project: {e}")
+        return {}
 
 def update_project(project_id: int, name: str) -> dict:
     print(f"Updating project {project_id} to name: {name}")
@@ -133,52 +154,34 @@ def duplicate_project(project_id: int) -> dict:
     # 2. Create new project
     new_name = f"{original_project['name']} (Copy)"
     new_project = create_project(new_name)
-    if not new_project or "id" not in new_project:
-        raise Exception("Failed to create new project during duplication.")
     new_id = new_project["id"]
     
-    # 3. Copy Metadata (row was already created by create_project, so just update it)
-    supabase.table("project_metadata").update({"tolerance": data.tolerance}).eq("project_id", new_id).execute()
+    # 3. Copy Metadata
+    supabase.table("project_metadata").upsert([{"project_id": new_id, "tolerance": data.tolerance}]).execute()
     
-    # 4. Copy Sections with explicit IDs
+    # 4. Copy Sections
     old_to_new_sec = {}
     if data.sections:
-        next_sec_id = _next_id("sections")
-        for i, sec in enumerate(data.sections):
+        for sec in data.sections:
             old_id = sec.id
-            sec_dict = {
-                "id": next_sec_id + i,
-                "name": sec.name,
-                "start_station": sec.start_station,
-                "end_station": sec.end_station,
-                "steel_ratio": sec.steel_ratio,
-                "project_id": new_id
-            }
+            sec_dict = json.loads(sec.json())
+            sec_dict.pop("id", None)
+            sec_dict["project_id"] = new_id
             res = supabase.table("sections").insert(sec_dict).execute()
             if res.data:
                 old_to_new_sec[old_id] = res.data[0]["id"]
-            else:
-                old_to_new_sec[old_id] = sec_dict["id"]
 
-    # 5. Copy Survey Days with explicit IDs
+    # 5. Copy Survey Days
     old_to_new_day = {}
     if data.survey_days:
-        next_day_id = _next_id("survey_days")
-        for i, day in enumerate(data.survey_days):
+        for day in data.survey_days:
             old_day_id = day.id
-            day_dict = {
-                "id": next_day_id + i,
-                "name": day.name,
-                "date": str(day.date),
-                "color": day.color,
-                "order_index": day.order_index,
-                "project_id": new_id
-            }
+            day_dict = json.loads(day.json())
+            day_dict.pop("id", None)
+            day_dict["project_id"] = new_id
             res = supabase.table("survey_days").insert(day_dict).execute()
             if res.data:
                 old_to_new_day[old_day_id] = res.data[0]["id"]
-            else:
-                old_to_new_day[old_day_id] = day_dict["id"]
     
     # 6. Copy Cracks
     if data.cracks:
@@ -187,16 +190,8 @@ def duplicate_project(project_id: int) -> dict:
             c_dict = json.loads(crack.json())
             c_dict.pop("id", None)
             c_dict["project_id"] = new_id
-            
-            # Use mapped section, or None if it was unmapped/null
-            c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
-            
-            new_day_id = old_to_new_day.get(c_dict.get("day_id"))
-            if new_day_id is None:
-                print(f"Skipping crack due to missing new day_id mapping: {c_dict}")
-                continue
-            
-            c_dict["day_id"] = new_day_id
+            c_dict["section_id"] = old_to_new_sec.get(c_dict["section_id"])
+            c_dict["day_id"] = old_to_new_day.get(c_dict["day_id"])
             crack_dicts.append(c_dict)
         
         # Batch insert cracks (max 1000 at a time if needed, but here simple)
@@ -227,76 +222,58 @@ def calculate_spacing(cracks: List[Crack]) -> List[float]:
         spacings.append(sorted_dists[i] - sorted_dists[i-1])
     return spacings
 
-def import_data(project_id: int, data: ProjectMetadata) -> dict:
-    print(f"Importing data for project {project_id}")
-    
-    # 1. Delete existing data for this project
+def export_project(project_id: int) -> dict:
+    data = load_data(project_id)
+    return json.loads(data.json())
+
+def import_project(project_id: int, data_dict: dict):
+    # 1. Delete all existing data for this project
     supabase.table("cracks").delete().eq("project_id", project_id).execute()
     supabase.table("survey_days").delete().eq("project_id", project_id).execute()
     supabase.table("sections").delete().eq("project_id", project_id).execute()
     
-    # 2. Update Metadata (row already exists, so update instead of upsert to avoid id issues)
-    supabase.table("project_metadata").update({"tolerance": data.tolerance}).eq("project_id", project_id).execute()
+    # 2. Update tolerance
+    tolerance = data_dict.get("tolerance", 0.1)
+    # The row was already created by create_project, so we can just update it
+    supabase.table("project_metadata").update({"tolerance": tolerance}).eq("project_id", project_id).execute()
     
-    # 3. Insert Sections with explicit IDs
+    # 3. Import Sections
     old_to_new_sec = {}
-    if data.sections:
-        next_sec_id = _next_id("sections")
-        for i, sec in enumerate(data.sections):
-            old_id = sec.id
-            sec_dict = {
-                "id": next_sec_id + i,
-                "name": sec.name,
-                "start_station": sec.start_station,
-                "end_station": sec.end_station,
-                "steel_ratio": sec.steel_ratio,
-                "project_id": project_id
-            }
-            res = supabase.table("sections").insert(sec_dict).execute()
-            if res.data:
-                old_to_new_sec[old_id] = res.data[0]["id"]
-            else:
-                old_to_new_sec[old_id] = sec_dict["id"]
-
-    # 4. Insert Survey Days with explicit IDs
+    sections = data_dict.get("sections", [])
+    for sec in sections:
+        old_id = sec.get("id")
+        sec_dict = dict(sec)
+        sec_dict.pop("id", None)
+        sec_dict["project_id"] = project_id
+        res = supabase.table("sections").insert(sec_dict).execute()
+        if res.data:
+            old_to_new_sec[old_id] = res.data[0]["id"]
+            
+    # 4. Import Survey Days
     old_to_new_day = {}
-    if data.survey_days:
-        next_day_id = _next_id("survey_days")
-        for i, day in enumerate(data.survey_days):
-            old_day_id = day.id
-            day_dict = {
-                "id": next_day_id + i,
-                "name": day.name,
-                "date": str(day.date),
-                "color": day.color,
-                "order_index": day.order_index,
-                "project_id": project_id
-            }
-            res = supabase.table("survey_days").insert(day_dict).execute()
-            if res.data:
-                old_to_new_day[old_day_id] = res.data[0]["id"]
-            else:
-                old_to_new_day[old_day_id] = day_dict["id"]
-
-    
-    # 5. Insert Cracks
-    if data.cracks:
-        crack_dicts = []
-        for crack in data.cracks:
-            c_dict = json.loads(crack.json())
-            c_dict.pop("id", None)
-            c_dict["project_id"] = project_id
+    survey_days = data_dict.get("survey_days", [])
+    for day in survey_days:
+        old_day_id = day.get("id")
+        day_dict = dict(day)
+        day_dict.pop("id", None)
+        day_dict["project_id"] = project_id
+        res = supabase.table("survey_days").insert(day_dict).execute()
+        if res.data:
+            old_to_new_day[old_day_id] = res.data[0]["id"]
             
-            c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
-            
-            new_day_id = old_to_new_day.get(c_dict.get("day_id"))
-            if new_day_id is None:
-                continue
-                
-            c_dict["day_id"] = new_day_id
-            crack_dicts.append(c_dict)
-            
-        if crack_dicts:
-            supabase.table("cracks").insert(crack_dicts).execute()
-
-    return {"status": "success"}
+    # 5. Import Cracks
+    cracks = data_dict.get("cracks", [])
+    crack_dicts = []
+    for crack in cracks:
+        c_dict = dict(crack)
+        c_dict.pop("id", None)
+        c_dict["project_id"] = project_id
+        c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
+        c_dict["day_id"] = old_to_new_day.get(c_dict.get("day_id"))
+        crack_dicts.append(c_dict)
+        
+    if crack_dicts:
+        # Split into batches of 1000 to be safe
+        batch_size = 1000
+        for i in range(0, len(crack_dicts), batch_size):
+            supabase.table("cracks").insert(crack_dicts[i:i+batch_size]).execute()

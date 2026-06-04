@@ -1,114 +1,185 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 
-function DataManagement({ projectId, projectData, onImportComplete, apiBase }) {
+const DataManagement = ({ activeProject, onImportComplete }) => {
     const fileInputRef = useRef(null);
+    const [isImporting, setIsImporting] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8080';
 
-    const handleDownload = () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(projectData, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `project_${projectId}_backup.json`);
-        document.body.appendChild(downloadAnchorNode);
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-    };
-
-    const handleUploadClick = () => {
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
+    const handleExport = async () => {
+        try {
+            setIsExporting(true);
+            const res = await fetch(`${API_BASE}/projects/${activeProject.id}/export`);
+            if (!res.ok) throw new Error("Failed to export data");
+            
+            const data = await res.json();
+            
+            // Format date for filename
+            const dateStr = new Date().toISOString().split('T')[0];
+            const safeName = activeProject.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const filename = `${safeName}_backup_${dateStr}.json`;
+            
+            // Trigger download
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Export error:", err);
+            alert("An error occurred during export.");
+        } finally {
+            setIsExporting(false);
         }
     };
 
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e) => {
+        const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            try {
-                const uploadedData = JSON.parse(event.target.result);
-                
-                // Basic validation
-                if (!uploadedData.sections || !uploadedData.survey_days || !uploadedData.cracks) {
-                    alert("Invalid backup file format. Missing core data structures.");
-                    return;
-                }
+        if (!window.confirm(`Are you sure you want to restore from this backup?\n\nWARNING: This will completely WIPE and REPLACE all existing sections, survey days, and cracks in the project "${activeProject.name}". This action cannot be undone.`)) {
+            e.target.value = ''; // Reset input
+            return;
+        }
 
-                const confirmed = window.confirm(
-                    "⚠️ WARNING: This will permanently DELETE and OVERWRITE all existing data for this project. Are you absolutely sure you want to proceed?"
-                );
+        try {
+            setIsImporting(true);
+            const text = await file.text();
+            const jsonData = JSON.parse(text);
 
-                if (!confirmed) {
-                    e.target.value = null; // reset input
-                    return;
-                }
+            const res = await fetch(`${API_BASE}/projects/${activeProject.id}/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(jsonData)
+            });
 
-                const res = await fetch(`${apiBase}/projects/${projectId}/import`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(uploadedData)
-                });
-
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.detail || 'Failed to import backup');
-                }
-
-                alert("Backup restored successfully!");
-                if (onImportComplete) {
-                    onImportComplete();
-                }
-
-            } catch (err) {
-                console.error("Import error:", err);
-                alert("Error importing backup: " + err.message);
-            } finally {
-                e.target.value = null; // reset input
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.detail || "Failed to import data");
             }
-        };
-        reader.readAsText(file);
+
+            alert("Backup restored successfully!");
+            if (onImportComplete) {
+                onImportComplete();
+            }
+        } catch (err) {
+            console.error("Import error:", err);
+            alert(`An error occurred during import: ${err.message}`);
+        } finally {
+            setIsImporting(false);
+            e.target.value = ''; // Reset input
+        }
     };
 
     return (
-        <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto', background: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ marginBottom: '1.5rem', color: '#1e293b' }}>Data Management</h2>
-            <p style={{ color: '#64748b', marginBottom: '2rem', lineHeight: 1.5 }}>
-                Use these tools to backup your current project data to a file, or restore a project from a previous backup. 
-                Please note that restoring a backup will permanently overwrite all existing data in this project.
+        <div style={{
+            maxWidth: '800px',
+            margin: '0 auto',
+            padding: '2rem',
+            background: '#ffffff',
+            borderRadius: '16px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+            border: '1px solid #e2e8f0'
+        }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0f172a', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                💾 Data Management
+            </h2>
+            <p style={{ color: '#64748b', marginBottom: '2rem', lineHeight: 1.6 }}>
+                Export your project data as a backup or for offline analysis. You can also restore a project from a previously exported backup file. Restoring will overwrite the current project's data.
             </p>
 
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-                <div style={{ flex: 1, padding: '1.5rem', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                    <h3 style={{ fontSize: '1.1rem', color: '#334155', marginBottom: '0.5rem' }}>Download Backup</h3>
-                    <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '1.5rem' }}>Save a copy of your project data to your computer.</p>
-                    <button 
-                        onClick={handleDownload}
-                        style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s', width: '100%' }}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                
+                {/* Export Card */}
+                <div style={{
+                    padding: '1.5rem',
+                    background: '#f8fafc',
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#1e293b', marginBottom: '0.5rem' }}>Export Backup</h3>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1.5rem', flex: 1 }}>
+                        Download a complete JSON backup containing all sections, survey days, and cracks for this project.
+                    </p>
+                    <button
+                        onClick={handleExport}
+                        disabled={isExporting}
+                        style={{
+                            background: '#2563eb',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            fontWeight: 600,
+                            cursor: isExporting ? 'not-allowed' : 'pointer',
+                            opacity: isExporting ? 0.7 : 1,
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}
                     >
-                        ⬇️ Download Backup
+                        {isExporting ? 'Exporting...' : '⬇️ Download Backup'}
                     </button>
                 </div>
 
-                <div style={{ flex: 1, padding: '1.5rem', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                    <h3 style={{ fontSize: '1.1rem', color: '#334155', marginBottom: '0.5rem' }}>Upload Backup</h3>
-                    <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '1.5rem' }}>Restore your project data from a backup file.</p>
-                    <input 
-                        type="file" 
-                        accept=".json" 
-                        ref={fileInputRef} 
-                        style={{ display: 'none' }} 
-                        onChange={handleFileChange} 
+                {/* Import Card */}
+                <div style={{
+                    padding: '1.5rem',
+                    background: '#fff1f2',
+                    borderRadius: '12px',
+                    border: '1px solid #fecdd3',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#9f1239', marginBottom: '0.5rem' }}>Restore Backup</h3>
+                    <p style={{ color: '#be123c', fontSize: '0.9rem', marginBottom: '1.5rem', flex: 1 }}>
+                        Upload a previously exported JSON backup. <strong>Warning:</strong> This will completely overwrite this project's current data.
+                    </p>
+                    <input
+                        type="file"
+                        accept=".json"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        style={{ display: 'none' }}
                     />
-                    <button 
-                        onClick={handleUploadClick}
-                        style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '6px', fontWeight: 600, cursor: 'pointer', transition: 'background 0.2s', width: '100%' }}
+                    <button
+                        onClick={handleImportClick}
+                        disabled={isImporting}
+                        style={{
+                            background: '#e11d48',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            fontWeight: 600,
+                            cursor: isImporting ? 'not-allowed' : 'pointer',
+                            opacity: isImporting ? 0.7 : 1,
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}
                     >
-                        ⬆️ Upload Backup
+                        {isImporting ? 'Restoring...' : '⬆️ Upload Backup'}
                     </button>
                 </div>
+
             </div>
         </div>
     );
-}
+};
 
 export default DataManagement;

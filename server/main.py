@@ -65,51 +65,74 @@ def duplicate_project(project_id: int):
 def get_data(project_id: int):
     return logic.load_data(project_id)
 
-@app.post("/projects/{project_id}/import")
-def import_project_data(project_id: int, data: ProjectMetadata):
-    try:
-        return logic.import_data(project_id, data)
-    except Exception as e:
-        print(f"ERROR in import_project_data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/projects/{project_id}/sections")
 def update_sections(project_id: int, sections: List[Section]):
     try:
-        # Build dicts, stamp project_id, strip temp IDs
-        sec_dicts = []
+        # Split sections into new (no id / negative id) vs existing (positive id owned by this project)
+        new_sec_dicts = []
+        update_sec_dicts = []
+
         for s in sections:
             d = json.loads(s.json())
             d["project_id"] = project_id
-            if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):
+            sec_id = d.get("id")
+            if sec_id is None or (isinstance(sec_id, int) and sec_id < 0):
+                # Brand-new section – strip temp id so DB auto-assigns a fresh id
                 d.pop("id", None)
-            sec_dicts.append(d)
+                new_sec_dicts.append(d)
+            else:
+                # Existing section – only update if it actually belongs to this project
+                # (guards against id collisions from manual migrations)
+                ownership_res = supabase.table("sections").select("id").eq("id", sec_id).eq("project_id", project_id).execute()
+                if ownership_res.data:
+                    update_sec_dicts.append(d)
+                else:
+                    # id exists but belongs to a different project – treat as new
+                    print(f"WARNING: section id={sec_id} does not belong to project {project_id}; inserting as new.")
+                    d.pop("id", None)
+                    new_sec_dicts.append(d)
 
-        # Upsert sections
         saved_ids = []
-        if sec_dicts:
-            result = supabase.table("sections").upsert(sec_dicts).execute()
-            if result.data:
-                saved_ids = [row["id"] for row in result.data]
 
-        # Delete sections removed by the user
+        # INSERT brand-new sections
+        if new_sec_dicts:
+            ins_result = supabase.table("sections").insert(new_sec_dicts).execute()
+            if ins_result.data:
+                saved_ids.extend(row["id"] for row in ins_result.data)
+
+        # UPDATE existing sections one-by-one (safe – always scoped to this project)
+        for d in update_sec_dicts:
+            upd_result = supabase.table("sections").update({
+                "name": d["name"],
+                "start_station": d["start_station"],
+                "end_station": d["end_station"],
+                "steel_ratio": d.get("steel_ratio", 0.0),
+            }).eq("id", d["id"]).eq("project_id", project_id).execute()
+            if upd_result.data:
+                saved_ids.append(upd_result.data[0]["id"])
+            else:
+                # Row was missing – fall back to insert
+                d_copy = dict(d)
+                d_copy.pop("id", None)
+                fb_result = supabase.table("sections").insert(d_copy).execute()
+                if fb_result.data:
+                    saved_ids.append(fb_result.data[0]["id"])
+
+        # Delete sections removed by the user (only for THIS project)
         existing_res = supabase.table("sections").select("id").eq("project_id", project_id).execute()
         existing_data = existing_res.data or []
         for row in existing_data:
             if row["id"] not in saved_ids:
-                supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
-                supabase.table("sections").delete().eq("id", row["id"]).execute()
+                supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).eq("project_id", project_id).execute()
+                supabase.table("sections").delete().eq("id", row["id"]).eq("project_id", project_id).execute()
 
-        # Re-assign crack section_ids based on new section boundaries
-        cracks_res = supabase.table("cracks").select("*").eq("project_id", project_id).execute()
-        cracks_data = cracks_res.data or []
-        
-        # Fetch updated sections
+        # Re-assign crack section_ids based on updated section boundaries
         updated_sec_res = supabase.table("sections").select("*").eq("project_id", project_id).execute()
         updated_sec_data = updated_sec_res.data or []
         updated_sections = [Section(**row) for row in updated_sec_data]
-        
-        for crack in cracks_data:
+
+        cracks_res = supabase.table("cracks").select("*").eq("project_id", project_id).execute()
+        for crack in (cracks_res.data or []):
             new_sec = logic.get_section_for_distance(crack["distance"], updated_sections)
             supabase.table("cracks").update({"section_id": new_sec}).eq("id", crack["id"]).execute()
 
@@ -120,24 +143,20 @@ def update_sections(project_id: int, sections: List[Section]):
 
 @app.post("/projects/{project_id}/survey-days")
 def add_survey_day(project_id: int, day: SurveyDay):
-    # Calculate the next order_index for this project so the new day goes to the END
-    order_res = supabase.table("survey_days").select("order_index").eq("project_id", project_id).order("order_index", desc=True).limit(1).execute()
-    next_order = (order_res.data[0]["order_index"] + 1) if order_res.data else 0
-
-    # Fetch current max ID globally to avoid primary key conflicts
+    # Fetch current max ID to avoid sequence issues
     res = supabase.table("survey_days").select("id").order("id", desc=True).limit(1).execute()
     max_id = res.data[0]["id"] if res.data else 0
     
-    # Adaptive ID assignment: retry if collision occurs
+    # Adaptive ID assignment: try max_id + 1, then increment if collision occurs
     next_id = max_id + 1
-    for _ in range(10):
+    for _ in range(10): # retry a few times if there are sparse higher IDs
         try:
             payload = {
                 "id": next_id,
                 "name": day.name,
                 "date": str(day.date),
                 "color": day.color,
-                "order_index": next_order,
+                "order_index": day.order_index,
                 "project_id": project_id
             }
             result = supabase.table("survey_days").insert(payload).execute()
@@ -240,6 +259,15 @@ def update_crack(project_id: int, crack_id: int, distance: float):
         "section_id": section_id
     }).eq("id", crack_id).eq("project_id", project_id).execute()
     return {"status": "updated"}
+
+@app.get("/projects/{project_id}/export")
+def export_project(project_id: int):
+    return logic.export_project(project_id)
+
+@app.post("/projects/{project_id}/import")
+def import_project(project_id: int, data: dict = Body(...)):
+    logic.import_project(project_id, data)
+    return {"status": "success"}
 
 if __name__ == "__main__":
     import uvicorn

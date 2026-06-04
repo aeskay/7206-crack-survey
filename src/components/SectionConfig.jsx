@@ -17,9 +17,11 @@ const SectionConfig = ({ sections, onSave }) => {
         const start = localSections.length > 0
             ? localSections[localSections.length - 1].end_station
             : 0;
+        // Use sequential position number (1-based) so names read "Section 1", "Section 2", not "Section 5", "Section 6"
+        const displayNumber = localSections.length + 1;
         setLocalSections([...localSections, {
             id: nextId,
-            name: `Section ${Math.abs(nextId)}`,
+            name: `Section ${displayNumber}`,
             start_station: start,
             end_station: start + 100,
             steel_ratio: 0

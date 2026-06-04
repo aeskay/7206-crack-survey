@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 
-const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateDay, onDeleteDay, onAddDay, onBulkDelete, onReorderDays }) => {
+const DataEntry = ({ sections, surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateDay, onDeleteDay, onAddDay, onBulkDelete, onReorderDays }) => {
     const [dayId, setDayId] = useState('');
     const [bulkData, setBulkData] = useState('');
     const [color, setColor] = useState('#2563eb');
@@ -96,8 +96,7 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
         const createdDay = await onAddDay({
             name: newDayName.trim(),
             date: dateStr,
-            color: color,
-            order_index: surveyDays.length   // place at end of current list
+            color: color
         });
 
         setNewDayName('');
@@ -186,7 +185,7 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
                 {/* Left column */}
                 <div>
                     <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>Survey Days ({surveyDays.filter(d => d.name.trim().toUpperCase() !== 'ACC').length} Total)</span>
+                        <span>Survey Days</span>
                         <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 'normal' }}>Drag to reorder</span>
                     </label>
                     <div className="day-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '1.5rem', maxHeight: '200px', overflowY: 'auto', paddingRight: '0.5rem' }}>
@@ -496,7 +495,7 @@ const DataEntry = ({ surveyDays, cracks, onUpload, onDelete, onUpdate, onUpdateD
                                                 )}
                                             </td>
                                             <td style={{ ...tdStyle, color: '#64748b' }}>
-                                                {crack.section_id ?? '—'}
+                                                {sections?.find(s => s.id === crack.section_id)?.name ?? crack.section_id ?? '—'}
                                             </td>
                                             <td style={tdStyle}>
                                                 <button

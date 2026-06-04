@@ -19,7 +19,7 @@ const TABS = [
     { id: 'sections', label: '⚙️ Sections' },
     { id: 'data', label: '📋 Data Entry' },
     { id: 'charts', label: '📊 Dashboard' },
-    { id: 'management', label: '💾 Data Management' }
+    { id: 'data-management', label: '💾 Data Management' }
 ];
 
 function App() {
@@ -31,6 +31,7 @@ function App() {
     const [analysisType, setAnalysisType] = useState('overview');
     const [apiError, setApiError] = useState(false);
     const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+    const [isLoadingData, setIsLoadingData] = useState(false);
 
     useEffect(() => {
         fetchProjects();
@@ -53,7 +54,6 @@ function App() {
             } else {
                 console.error("API returned non-array for projects:", json);
                 setProjects([]);
-                // If it's a 404, the server definitely needs a restart or has an error
                 setApiError(true);
             }
         } catch (err) {
@@ -65,6 +65,7 @@ function App() {
     };
 
     const fetchProjectData = async (projectId) => {
+        setIsLoadingData(true);
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}/data`);
             const json = await res.json();
@@ -73,6 +74,8 @@ function App() {
         } catch (err) {
             console.error("Failed to fetch project data:", err);
             setApiError(true);
+        } finally {
+            setIsLoadingData(false);
         }
     };
 
@@ -150,10 +153,7 @@ function App() {
 
     const handleDeleteDay = async (dayId) => {
         if (!window.confirm("Are you sure you want to delete this survey day and all its measurements? This cannot be undone.")) return;
-
-        await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days/${dayId}`, {
-            method: 'DELETE'
-        });
+        await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days/${dayId}`, { method: 'DELETE' });
         fetchProjectData(activeProject.id);
     };
 
@@ -269,17 +269,9 @@ function App() {
                         <button
                             onClick={() => setActiveProject(null)}
                             style={{
-                                background: '#f1f5f9',
-                                border: 'none',
-                                borderRadius: '8px',
-                                padding: '0.5rem 0.75rem',
-                                fontSize: '0.875rem',
-                                fontWeight: 600,
-                                color: '#475569',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.4rem'
+                                background: '#f1f5f9', border: 'none', borderRadius: '8px',
+                                padding: '0.5rem 0.75rem', fontSize: '0.875rem', fontWeight: 600,
+                                color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem'
                             }}
                         >
                             ← Switch Project
@@ -313,140 +305,121 @@ function App() {
             </header>
 
             <main className="tab-content">
-                {activeTab === 'sections' && (
-                    <SectionConfig sections={data.sections} onSave={handleSaveSections} />
-                )}
-
-                {activeTab === 'data' && (
-                    <>
-                        <DataEntry
-                            surveyDays={data.survey_days}
-                            cracks={data.cracks}
-                            onUpload={handleUploadCracks}
-                            onDelete={handleDeleteCrack}
-                            onUpdate={handleUpdateCrack}
-                            onUpdateDay={handleUpdateDay}
-                            onDeleteDay={handleDeleteDay}
-                            onAddDay={handleAddDay}
-                            onBulkDelete={handleBulkDelete}
-                            onReorderDays={handleReorderDays}
-                        />
-                        {conflicts.length > 0 && (
-                            <ConflictTable conflicts={conflicts} onResolve={handleResolveConflict} />
-                        )}
-                    </>
-                )}
-
-                {activeTab === 'charts' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#ffffff', padding: '0.75rem 1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                            <span style={{ fontWeight: 600, color: '#475569', fontSize: '0.95rem' }}>Analysis Type:</span>
-                            <div style={{ display: 'flex', background: '#f1f5f9', padding: '0.3rem', borderRadius: '8px', gap: '0.3rem' }}>
-                                <button
-                                    onClick={() => setAnalysisType('overview')}
-                                    style={{
-                                        padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: 600, border: 'none',
-                                        borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s',
-                                        background: analysisType === 'overview' ? '#ffffff' : 'transparent',
-                                        color: analysisType === 'overview' ? '#0f172a' : '#64748b',
-                                        boxShadow: analysisType === 'overview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
-                                    }}
-                                >
-                                    Cracks Layout
-                                </button>
-                                <button
-                                    onClick={() => setAnalysisType('scurve')}
-                                    style={{
-                                        padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: 600, border: 'none',
-                                        borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s',
-                                        background: analysisType === 'scurve' ? '#ffffff' : 'transparent',
-                                        color: analysisType === 'scurve' ? '#0f172a' : '#64748b',
-                                        boxShadow: analysisType === 'scurve' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
-                                    }}
-                                >
-                                    Cumulative Distribution (S-Curve)
-                                </button>
-                                <button
-                                    onClick={() => setAnalysisType('frequency')}
-                                    style={{
-                                        padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: 600, border: 'none',
-                                        borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s',
-                                        background: analysisType === 'frequency' ? '#ffffff' : 'transparent',
-                                        color: analysisType === 'frequency' ? '#0f172a' : '#64748b',
-                                        boxShadow: analysisType === 'frequency' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
-                                    }}
-                                >
-                                    Spacing Frequency
-                                </button>
-                                <button
-                                    onClick={() => setAnalysisType('other')}
-                                    style={{
-                                        padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: 600, border: 'none',
-                                        borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s',
-                                        background: analysisType === 'other' ? '#ffffff' : 'transparent',
-                                        color: analysisType === 'other' ? '#0f172a' : '#64748b',
-                                        boxShadow: analysisType === 'other' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
-                                    }}
-                                >
-                                    Other Analyses
-                                </button>
+                {isLoadingData ? (
+                    <div style={{ padding: '2rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', color: '#64748b' }}>
+                            <div style={{
+                                width: '20px', height: '20px', border: '3px solid #e2e8f0',
+                                borderTopColor: '#2563eb', borderRadius: '50%',
+                                animation: 'spin 0.7s linear infinite', flexShrink: 0
+                            }} />
+                            <span style={{ fontSize: '0.95rem', fontWeight: 500 }}>Loading project data…</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {[200, 160, 120, 140, 100].map((w, i) => (
+                                <div key={i} style={{
+                                    height: '18px', width: `${w}px`, borderRadius: '6px',
+                                    background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                                    backgroundSize: '800px 100%', animation: 'shimmer 1.4s infinite linear'
+                                }} />
+                            ))}
+                            <div style={{ marginTop: '1rem', background: '#f8fafc', borderRadius: '12px', padding: '1.5rem', border: '1px solid #e2e8f0' }}>
+                                {[100, 80, 90, 70, 85, 60].map((w, i) => (
+                                    <div key={i} style={{
+                                        height: '14px', width: `${w}%`, borderRadius: '4px', marginBottom: '0.75rem',
+                                        background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+                                        backgroundSize: '800px 100%', animation: 'shimmer 1.4s infinite linear'
+                                    }} />
+                                ))}
                             </div>
                         </div>
+                        <style>{`
+                            @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+                            @keyframes spin { to { transform: rotate(360deg); } }
+                        `}</style>
+                    </div>
+                ) : (
+                    <>
+                        {activeTab === 'sections' && (
+                            <SectionConfig sections={data.sections} onSave={handleSaveSections} />
+                        )}
 
-                        {analysisType === 'overview' && (
-                            <PavementChart
-                                sections={data.sections}
-                                cracks={data.cracks}
-                                surveyDays={data.survey_days}
-                            />
-                        )}
-                        {analysisType === 'scurve' && (
-                            <SCurveChart
-                                sections={data.sections}
-                                cracks={data.cracks}
-                                surveyDays={data.survey_days}
-                            />
-                        )}
-                        {analysisType === 'frequency' && (
-                            <FrequencyChart
-                                sections={data.sections}
-                                cracks={data.cracks}
-                                surveyDays={data.survey_days}
-                            />
-                        )}
-                        {analysisType === 'other' && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                <CrackSpacingChart
+                        {activeTab === 'data' && (
+                            <>
+                                <DataEntry
                                     sections={data.sections}
-                                    cracks={data.cracks}
                                     surveyDays={data.survey_days}
-                                />
-                                <CrackPropagationChart
-                                    sections={data.sections}
                                     cracks={data.cracks}
-                                    surveyDays={data.survey_days}
+                                    onUpload={handleUploadCracks}
+                                    onDelete={handleDeleteCrack}
+                                    onUpdate={handleUpdateCrack}
+                                    onUpdateDay={handleUpdateDay}
+                                    onDeleteDay={handleDeleteDay}
+                                    onAddDay={handleAddDay}
+                                    onBulkDelete={handleBulkDelete}
+                                    onReorderDays={handleReorderDays}
                                 />
-                                <SpacingBoxPlotChart
-                                    sections={data.sections}
-                                    cracks={data.cracks}
-                                />
-                                <CrackDensityChart
-                                    sections={data.sections}
-                                    cracks={data.cracks}
-                                    surveyDays={data.survey_days}
-                                />
+                                {conflicts.length > 0 && (
+                                    <ConflictTable conflicts={conflicts} onResolve={handleResolveConflict} />
+                                )}
+                            </>
+                        )}
+
+                        {activeTab === 'charts' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', height: '100%' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#ffffff', padding: '0.75rem 1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                                    <span style={{ fontWeight: 600, color: '#475569', fontSize: '0.95rem' }}>Analysis Type:</span>
+                                    <div style={{ display: 'flex', background: '#f1f5f9', padding: '0.3rem', borderRadius: '8px', gap: '0.3rem' }}>
+                                        {[
+                                            { id: 'overview', label: 'Cracks Layout' },
+                                            { id: 'scurve', label: 'Cumulative Distribution (S-Curve)' },
+                                            { id: 'frequency', label: 'Spacing Frequency' },
+                                            { id: 'other', label: 'Other Analyses' },
+                                        ].map(at => (
+                                            <button
+                                                key={at.id}
+                                                onClick={() => setAnalysisType(at.id)}
+                                                style={{
+                                                    padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: 600,
+                                                    border: 'none', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s',
+                                                    background: analysisType === at.id ? '#ffffff' : 'transparent',
+                                                    color: analysisType === at.id ? '#0f172a' : '#64748b',
+                                                    boxShadow: analysisType === at.id ? '0 1px 2px rgba(0,0,0,0.1)' : 'none'
+                                                }}
+                                            >
+                                                {at.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {analysisType === 'overview' && (
+                                    <PavementChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                )}
+                                {analysisType === 'scurve' && (
+                                    <SCurveChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                )}
+                                {analysisType === 'frequency' && (
+                                    <FrequencyChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                )}
+                                {analysisType === 'other' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                                        <CrackSpacingChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                        <CrackPropagationChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                        <SpacingBoxPlotChart sections={data.sections} cracks={data.cracks} />
+                                        <CrackDensityChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                    </div>
+                                )}
                             </div>
                         )}
-                    </div>
-                )}
 
-                {activeTab === 'management' && (
-                    <DataManagement 
-                        projectId={activeProject.id}
-                        projectData={data}
-                        apiBase={API_BASE}
-                        onImportComplete={() => fetchProjectData(activeProject.id)}
-                    />
+                        {activeTab === 'data-management' && (
+                            <DataManagement
+                                activeProject={activeProject}
+                                onImportComplete={() => fetchProjectData(activeProject.id)}
+                            />
+                        )}
+                    </>
                 )}
             </main>
         </div>
