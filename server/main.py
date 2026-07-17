@@ -107,6 +107,7 @@ def update_sections(project_id: int, sections: List[Section]):
                 "start_station": d["start_station"],
                 "end_station": d["end_station"],
                 "steel_ratio": d.get("steel_ratio", 0.0),
+                "color": d.get("color", "#2563eb"),
             }).eq("id", d["id"]).eq("project_id", project_id).execute()
             if upd_result.data:
                 saved_ids.append(upd_result.data[0]["id"])

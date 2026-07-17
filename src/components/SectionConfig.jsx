@@ -24,7 +24,8 @@ const SectionConfig = ({ sections, onSave }) => {
             name: `Section ${displayNumber}`,
             start_station: start,
             end_station: start + 100,
-            steel_ratio: 0
+            steel_ratio: 0,
+            color: ['#2563eb', '#dc2626', '#16a34a', '#8b5cf6', '#f59e0b', '#0ea5e9', '#db2777', '#14b8a6'][localSections.length % 8]
         }]);
     };
 
@@ -36,7 +37,7 @@ const SectionConfig = ({ sections, onSave }) => {
     const updateSection = (index, field, value) => {
         const updated = localSections.map((sec, i) => {
             if (i === index) {
-                if (field === 'name') return { ...sec, [field]: value };
+                if (field === 'name' || field === 'color') return { ...sec, [field]: value };
                 const parsed = parseFloat(value);
                 return { ...sec, [field]: isNaN(parsed) ? 0 : parsed };
             }
@@ -94,7 +95,7 @@ const SectionConfig = ({ sections, onSave }) => {
                             Delete
                         </button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr', gap: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 0.5fr', gap: '0.75rem' }}>
                         <div>
                             <label>Name</label>
                             <input
@@ -126,6 +127,15 @@ const SectionConfig = ({ sections, onSave }) => {
                                 onChange={(e) => updateSection(idx, 'steel_ratio', e.target.value)}
                                 type="number"
                                 step="0.01"
+                            />
+                        </div>
+                        <div>
+                            <label>Color</label>
+                            <input
+                                value={sec.color || '#2563eb'}
+                                onChange={(e) => updateSection(idx, 'color', e.target.value)}
+                                type="color"
+                                style={{ padding: 0, height: '40px', width: '100%' }}
                             />
                         </div>
                     </div>

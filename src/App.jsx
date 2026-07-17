@@ -13,7 +13,7 @@ import SpacingBoxPlotChart from './components/SpacingBoxPlotChart';
 import DataManagement from './components/DataManagement';
 import './index.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8080';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
 const TABS = [
     { id: 'sections', label: '⚙️ Sections' },
@@ -65,9 +65,18 @@ function App() {
     };
 
     const fetchProjectData = async (projectId) => {
+        if (projectId == null) {
+            console.error("fetchProjectData called with undefined/null projectId – skipping.");
+            return;
+        }
         setIsLoadingData(true);
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}/data`);
+            if (!res.ok) {
+                console.error(`Failed to fetch project data: HTTP ${res.status}`);
+                setApiError(true);
+                return;
+            }
             const json = await res.json();
             setData(json);
             setApiError(false);
@@ -87,6 +96,11 @@ function App() {
                 body: JSON.stringify({ name })
             });
             const newProject = await res.json();
+            if (!newProject || newProject.id == null) {
+                console.error("Failed to create project: server returned no valid project ID", newProject);
+                alert('Error: Project was not created properly. Please try again.');
+                return;
+            }
             setProjects([newProject, ...projects]);
             setActiveProject(newProject);
         } catch (err) {
@@ -95,11 +109,19 @@ function App() {
     };
 
     const handleSaveSections = async (sections) => {
-        await fetch(`${API_BASE}/projects/${activeProject.id}/sections`, {
+        if (!activeProject || activeProject.id == null) {
+            console.error("handleSaveSections: activeProject.id is undefined – aborting save.");
+            throw new Error('No active project selected.');
+        }
+        const res = await fetch(`${API_BASE}/projects/${activeProject.id}/sections`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(sections)
         });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `Server error ${res.status}`);
+        }
         fetchProjectData(activeProject.id);
     };
 

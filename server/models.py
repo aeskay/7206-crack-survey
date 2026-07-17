@@ -14,6 +14,7 @@ class Section(BaseModel):
     end_station: float
     steel_ratio: float = 0.0
     project_id: Optional[int] = None
+    color: Optional[str] = '#2563eb'
 
 class Crack(BaseModel):
     id: Optional[int] = None

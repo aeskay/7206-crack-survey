@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
+import Plotly from 'plotly.js-dist-min';
 
 const getSCurveData = (filteredCracks, surveyDays) => {
   return surveyDays.map((day, index) => {
@@ -31,15 +32,19 @@ const SCurveCommonLayout = {
   autosize: true,
   margin: { l: 70, r: 30, t: 30, b: 70 },
   xaxis: {
-    title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16 } },
+    title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16, color: 'black' } },
+                        tickfont: { size: 14, color: 'black' },
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
     dtick: 2,
     tick0: 0
   },
   yaxis: {
-    title: { text: '<b>Cumulative Percentage (%)</b>', font: { size: 16 } },
+    title: { text: '<b>Cumulative Percentage (%)</b>', font: { size: 16, color: 'black' } },
+                        tickfont: { size: 14, color: 'black' },
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
     range: [0, 105]
   },
-  legend: { orientation: 'h', y: -0.25 }
+  legend: { orientation: 'h', y: -0.25, x: 0.5, xanchor: 'center', font: { color: 'black', size: 14 }, bordercolor: 'black', borderwidth: 1 }
 };
 
 const SCurveChart = ({ cracks, surveyDays, sections }) => {
@@ -66,6 +71,21 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
           data={overviewData}
           layout={SCurveCommonLayout}
           useResizeHandler={true}
+                config={{
+                    modeBarButtonsToRemove: ['toImage'],
+                    modeBarButtonsToAdd: [{
+                        name: 'Download plot as a png',
+                        icon: Plotly.Icons.camera,
+                        click: function(gd) {
+                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
+                            Plotly.downloadImage(
+                                { data: visibleData, layout: gd.layout }, 
+                                { format: 'png', filename: 'chart' }
+                            );
+                        }
+                    }]
+                }}
+
           style={{ width: "100%", height: "400px" }}
         />
       </div>
@@ -82,7 +102,10 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
               (c) => c.distance >= sec.start_station && c.distance <= sec.end_station
             );
 
-            const avgSpacing = secCracks.length > 0 ? ((sec.end_station - sec.start_station) / secCracks.length).toFixed(1) : '—';
+            const sortedCracks = [...secCracks].sort((a, b) => a.distance - b.distance);
+            const avgSpacing = sortedCracks.length > 1 
+                ? ((sortedCracks[sortedCracks.length - 1].distance - sortedCracks[0].distance) / (sortedCracks.length - 1)).toFixed(1) 
+                : '—';
 
             return (
               <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '0.75rem', overflow: 'hidden' }}>
@@ -120,6 +143,21 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
                       data={getSCurveData(secCracks, surveyDays)}
                       layout={SCurveCommonLayout}
                       useResizeHandler={true}
+                config={{
+                    modeBarButtonsToRemove: ['toImage'],
+                    modeBarButtonsToAdd: [{
+                        name: 'Download plot as a png',
+                        icon: Plotly.Icons.camera,
+                        click: function(gd) {
+                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
+                            Plotly.downloadImage(
+                                { data: visibleData, layout: gd.layout }, 
+                                { format: 'png', filename: 'chart' }
+                            );
+                        }
+                    }]
+                }}
+
                       style={{ width: "100%", height: "350px" }}
                     />
                   </div>

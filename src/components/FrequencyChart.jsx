@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
+import Plotly from 'plotly.js-dist-min';
 
 const BINS = ['0-2', '2-4', '4-6', '6-8', '8-10', '10-12', '12-14', '14-16', '>16'];
 
@@ -46,13 +47,17 @@ const FrequencyCommonLayout = {
     barmode: 'group',
     margin: { l: 70, r: 30, t: 30, b: 70 },
     xaxis: {
-        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16 } },
+        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16, color: 'black' } },
+                        tickfont: { size: 14, color: 'black' },
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
         tickangle: -45,
         type: 'category'
     },
     yaxis: {
-        title: { text: '<b>Frequency (Count)</b>', font: { size: 16 } }
-    },
+        title: { text: '<b>Frequency (Count)</b>', font: { size: 16, color: 'black' } }
+    ,
+                        tickfont: { size: 14, color: 'black' },
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside'},
     legend: { orientation: 'h', y: -0.3 }
 };
 
@@ -78,6 +83,21 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                     data={overviewData}
                     layout={FrequencyCommonLayout}
                     useResizeHandler={true}
+                config={{
+                    modeBarButtonsToRemove: ['toImage'],
+                    modeBarButtonsToAdd: [{
+                        name: 'Download plot as a png',
+                        icon: Plotly.Icons.camera,
+                        click: function(gd) {
+                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
+                            Plotly.downloadImage(
+                                { data: visibleData, layout: gd.layout }, 
+                                { format: 'png', filename: 'chart' }
+                            );
+                        }
+                    }]
+                }}
+
                     style={{ width: "100%", height: "400px" }}
                 />
             </div>
@@ -93,7 +113,10 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                             (c) => c.distance >= sec.start_station && c.distance <= sec.end_station
                         );
 
-                        const avgSpacing = secCracks.length > 0 ? ((sec.end_station - sec.start_station) / secCracks.length).toFixed(1) : '—';
+                        const sortedCracks = [...secCracks].sort((a, b) => a.distance - b.distance);
+                        const avgSpacing = sortedCracks.length > 1 
+                            ? ((sortedCracks[sortedCracks.length - 1].distance - sortedCracks[0].distance) / (sortedCracks.length - 1)).toFixed(1) 
+                            : '—';
 
                         return (
                             <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '0.75rem', overflow: 'hidden' }}>
@@ -131,6 +154,21 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                                             data={getFrequencyData(secCracks, surveyDays)}
                                             layout={FrequencyCommonLayout}
                                             useResizeHandler={true}
+                config={{
+                    modeBarButtonsToRemove: ['toImage'],
+                    modeBarButtonsToAdd: [{
+                        name: 'Download plot as a png',
+                        icon: Plotly.Icons.camera,
+                        click: function(gd) {
+                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
+                            Plotly.downloadImage(
+                                { data: visibleData, layout: gd.layout }, 
+                                { format: 'png', filename: 'chart' }
+                            );
+                        }
+                    }]
+                }}
+
                                             style={{ width: "100%", height: "350px" }}
                                         />
                                     </div>

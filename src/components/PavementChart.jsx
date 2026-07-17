@@ -243,8 +243,11 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
         }));
 
     const visibleCracks = cracks.filter((c) => visibleDays.includes(c.day_id));
-    const totalCracks = visibleCracks.length;
-    const totalAvgSpacing = totalCracks > 0 ? (totalLength / totalCracks).toFixed(1) : '—';
+    const sortedCracks = [...visibleCracks].sort((a, b) => a.distance - b.distance);
+    const totalCracks = sortedCracks.length;
+    const totalAvgSpacing = totalCracks > 1 
+        ? ((sortedCracks[totalCracks - 1].distance - sortedCracks[0].distance) / (totalCracks - 1)).toFixed(1) 
+        : '—';
 
     return (
         <div className="card">
@@ -496,14 +499,17 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                         const secState = expandedSections[idx] ?? { open: false, zoom: 1 };
                         const isOpen = secState.open;
                         const secZoom = secState.zoom;
-                        const secCrackCount = cracks.filter(
+                        const secCracks = cracks.filter(
                             (c) =>
                                 c.distance >= sec.start_station &&
                                 c.distance <= sec.end_station &&
                                 visibleDays.includes(c.day_id)
-                        ).length;
+                        ).sort((a, b) => a.distance - b.distance);
+                        const secCrackCount = secCracks.length;
 
-                        const avgSpacing = secCrackCount > 0 ? ((sec.end_station - sec.start_station) / secCrackCount).toFixed(1) : '—';
+                        const avgSpacing = secCrackCount > 1 
+                            ? ((secCracks[secCrackCount - 1].distance - secCracks[0].distance) / (secCrackCount - 1)).toFixed(1) 
+                            : '—';
 
                         return (
                             <div

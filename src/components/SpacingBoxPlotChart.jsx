@@ -1,5 +1,6 @@
 import React from 'react';
 import Plot from 'react-plotly.js';
+import Plotly from 'plotly.js-dist-min';
 
 const SpacingBoxPlotChart = ({ cracks, sections }) => {
     if (!cracks || cracks.length === 0 || sections.length === 0) return null;
@@ -38,15 +39,34 @@ const SpacingBoxPlotChart = ({ cracks, sections }) => {
                     autosize: true,
                     margin: { l: 60, r: 30, t: 30, b: 70 },
                     xaxis: {
-                        title: { text: '<b>Pavement Section</b>', font: { size: 16 } },
+                        title: { text: '<b>Pavement Section</b>', font: { size: 16, color: 'black' } },
+                        tickfont: { size: 14, color: 'black' },
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
                     },
                     yaxis: {
-                        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16 } },
+                        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16, color: 'black' } },
+                        tickfont: { size: 14, color: 'black' },
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
                         rangemode: 'tozero'
                     },
                     showlegend: false // Legend is redundant since x-axis labels are section names
                 }}
                 useResizeHandler={true}
+                config={{
+                    modeBarButtonsToRemove: ['toImage'],
+                    modeBarButtonsToAdd: [{
+                        name: 'Download plot as a png',
+                        icon: Plotly.Icons.camera,
+                        click: function(gd) {
+                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
+                            Plotly.downloadImage(
+                                { data: visibleData, layout: gd.layout }, 
+                                { format: 'png', filename: 'chart' }
+                            );
+                        }
+                    }]
+                }}
+
                 style={{ width: "100%", height: "450px" }}
             />
         </div>
