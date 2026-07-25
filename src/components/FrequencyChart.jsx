@@ -4,14 +4,22 @@ import Plotly from 'plotly.js-dist-min';
 
 const BINS = ['0-2', '2-4', '4-6', '6-8', '8-10', '10-12', '12-14', '14-16', '>16'];
 
-const getFrequencyData = (filteredCracks, surveyDays) => {
+const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endStation = null) => {
     return surveyDays.map((day, index) => {
         // Accumulate cracks up to this day to get correct spacings
         const daysUpToCurrent = surveyDays.slice(0, index + 1).map(d => parseInt(d.id, 10));
         const dayCracks = filteredCracks.filter(c => daysUpToCurrent.includes(parseInt(c.day_id, 10)));
-        if (dayCracks.length < 2) return null;
 
         const sortedDists = dayCracks.map(c => c.distance).sort((a, b) => a - b);
+        
+        if (startStation !== null && endStation !== null) {
+            const distsSet = new Set(sortedDists);
+            if (!distsSet.has(startStation)) sortedDists.unshift(startStation);
+            if (!distsSet.has(endStation)) sortedDists.push(endStation);
+            sortedDists.sort((a, b) => a - b);
+        }
+
+        if (sortedDists.length < 2) return null;
         const spacings = [];
         for (let i = 1; i < sortedDists.length; i++) {
             spacings.push(sortedDists[i] - sortedDists[i - 1]);
@@ -127,10 +135,10 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
         });
     };
 
-    const overviewData = getFrequencyData(cracks, chartSurveyDays);
-
     const projectStart = sections && sections.length > 0 ? sections[0].start_station : 0;
     const totalLength = sections && sections.length > 0 ? sections[sections.length - 1].end_station : 1000;
+    
+    const overviewData = getFrequencyData(cracks, chartSurveyDays, projectStart, totalLength);
     const totalCracks = cracks.length;
     
     let totalSpacingPoints = totalCracks;
@@ -267,7 +275,7 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                                         </div>
                                         <Plot
                                             divId={`freq-sec-${idx}`}
-                                            data={getFrequencyData(secCracks, chartSurveyDays)}
+                                            data={getFrequencyData(secCracks, chartSurveyDays, sec.start_station, sec.end_station)}
                                             layout={FrequencyCommonLayout}
                                             useResizeHandler={true}
                                             config={{ displayModeBar: false }}
