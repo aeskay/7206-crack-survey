@@ -7,13 +7,17 @@ const SpacingBoxPlotChart = ({ cracks, sections }) => {
 
     const data = sections.map((sec, idx) => {
         // Get all cracks in this section across all days
-        const secCracks = cracks
+        const secCrackDistances = cracks
             .filter(c => c.distance >= sec.start_station && c.distance <= sec.end_station)
-            .sort((a, b) => a.distance - b.distance);
+            .map(c => c.distance)
+            .sort((a, b) => a - b);
+            
+        if (!secCrackDistances.includes(sec.start_station)) secCrackDistances.unshift(sec.start_station);
+        if (!secCrackDistances.includes(sec.end_station)) secCrackDistances.push(sec.end_station);
 
         const spacings = [];
-        for (let i = 1; i < secCracks.length; i++) {
-            spacings.push(secCracks[i].distance - secCracks[i - 1].distance);
+        for (let i = 1; i < secCrackDistances.length; i++) {
+            spacings.push(secCrackDistances[i] - secCrackDistances[i - 1]);
         }
 
         const colors = ['#2563eb', '#dc2626', '#16a34a', '#8b5cf6', '#f59e0b', '#0ea5e9', '#db2777', '#14b8a6'];

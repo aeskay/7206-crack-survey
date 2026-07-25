@@ -9,7 +9,7 @@ const BAR_HEIGHT = 100;     // bar height
 const LABEL_Y = BAR_Y - 22; // section name (line 1)
 const STEEL_Y = BAR_Y - 10; // steel ratio (line 2)
 const STATION_Y = BAR_Y + BAR_HEIGHT + 28;  // numbers well below bar
-const AXIS_LABEL_Y = STATION_Y + 22;        // 'Station (ft)' below numbers
+const AXIS_LABEL_Y = STATION_Y + 22;        // 'DMI (ft)' below numbers
 const CRACK_STROKE = 0.8;   // thin enough to stay crisp at any zoom
 
 
@@ -98,8 +98,8 @@ const SectionMiniChart = React.forwardRef(({ section, cracks, surveyDays, visibl
                         />
                     );
                 })}
-                <text x={MINI_VB_WIDTH / 2} y={COUNT_Y} fontSize="12" textAnchor="middle" fill="#94a3b8">
-                    Station (ft)
+                <text x={MINI_VB_WIDTH / 2} y={MINI_AXIS_Y} fontSize="12" fontWeight="bold" textAnchor="middle" fill="#64748b">
+                    DMI (ft)
                 </text>
             </svg>
         </div>
@@ -147,74 +147,71 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
     const [expandedSections, setExpandedSections] = useState({});
     const [zoom, setZoom] = useState(1);
     const svgRef = useRef(null);
+    const sectionSvgRefs = useRef({});
 
-    const downloadChart = () => {
-        const svg = svgRef.current;
-        if (!svg) return;
-        const serializer = new XMLSerializer();
-        const svgStr = serializer.serializeToString(svg);
-        const scale = 3;
-        const w = VB_WIDTH * scale;
-        const svgH = VB_HEIGHT * scale;
-        const legendPad = 40 * scale;
-        const h = svgH + legendPad;
+    const getChartCanvas = (isSection, idx, metadata) => {
+        return new Promise((resolve) => {
+            const svg = isSection ? sectionSvgRefs.current[idx] : svgRef.current;
+            if (!svg) return resolve(null);
+            const serializer = new XMLSerializer();
+            const svgStr = serializer.serializeToString(svg);
+            const scale = 3;
+            const w = (isSection ? MINI_VB_WIDTH : VB_WIDTH) * scale;
+            const svgH = (isSection ? (MINI_BAR_Y + MINI_BAR_H + 44) : VB_HEIGHT) * scale;
+            const legendPad = 40 * scale;
+            const h = svgH + legendPad;
 
-        const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#f1f5f9';
-            ctx.fillRect(0, 0, w, h);
-            ctx.drawImage(img, 0, 0, w, svgH);
+            const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = isSection ? '#f8fafc' : '#f1f5f9';
+                ctx.fillRect(0, 0, w, h);
+                ctx.drawImage(img, 0, 0, w, svgH);
 
-            drawLegendOntoCanvas(ctx, 20 * scale, svgH + (10 * scale), scale, surveyDays, visibleDays);
+                drawLegendOntoCanvas(ctx, (isSection ? MINI_PADDING : 20) * scale, svgH + (10 * scale), scale, surveyDays, visibleDays);
 
-            URL.revokeObjectURL(url);
-            const link = document.createElement('a');
-            link.download = 'crack-survey-overview.png';
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        };
-        img.src = url;
+                if (metadata) {
+                    ctx.font = `bold ${11 * scale}px sans-serif`;
+                    ctx.fillStyle = '#1e293b';
+                    const startX = (isSection ? MINI_PADDING : PADDING) * scale;
+                    ctx.fillText(metadata, startX, 30 * scale);
+                }
+
+                URL.revokeObjectURL(url);
+                resolve(canvas);
+            };
+            img.src = url;
+        });
     };
 
-    // Per-section download refs & helper
-    const sectionSvgRefs = useRef({});
-    const downloadSectionChart = (idx, sectionName) => {
-        const svg = sectionSvgRefs.current[idx];
-        if (!svg) return;
-        const serializer = new XMLSerializer();
-        const svgStr = serializer.serializeToString(svg);
-        const scale = 3;
-        const w = MINI_VB_WIDTH * scale;
-        const svgH = (MINI_BAR_Y + MINI_BAR_H + 44) * scale;
-        const legendPad = 40 * scale;
-        const h = svgH + legendPad;
+    const handleDownload = async (isSection, idx, name, metadata) => {
+        const canvas = await getChartCanvas(isSection, idx, metadata);
+        if (!canvas) return;
+        const link = document.createElement('a');
+        link.download = `crack-survey-${name.replace(/\s+/g, '-').toLowerCase()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    };
 
-        const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#f8fafc';
-            ctx.fillRect(0, 0, w, h);
-            ctx.drawImage(img, 0, 0, w, svgH);
+    const [copiedId, setCopiedId] = useState(null);
 
-            drawLegendOntoCanvas(ctx, MINI_PADDING * scale, svgH + (10 * scale), scale, surveyDays, visibleDays);
-
-            URL.revokeObjectURL(url);
-            const link = document.createElement('a');
-            link.download = `crack-survey-${sectionName.replace(/\s+/g, '-').toLowerCase()}.png`;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-        };
-        img.src = url;
+    const handleCopy = async (isSection, idx, metadata, idString) => {
+        const canvas = await getChartCanvas(isSection, idx, metadata);
+        if (!canvas) return;
+        canvas.toBlob(blob => {
+            if (!blob) return;
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                setCopiedId(idString);
+                setTimeout(() => setCopiedId(null), 2000);
+            }).catch(err => {
+                console.error('Failed to copy image: ', err);
+            });
+        });
     };
 
     // Keep newly-added days visible automatically
@@ -245,9 +242,17 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
     const visibleCracks = cracks.filter((c) => visibleDays.includes(c.day_id));
     const sortedCracks = [...visibleCracks].sort((a, b) => a.distance - b.distance);
     const totalCracks = sortedCracks.length;
-    const totalAvgSpacing = totalCracks > 1 
-        ? ((sortedCracks[totalCracks - 1].distance - sortedCracks[0].distance) / (totalCracks - 1)).toFixed(1) 
-        : '—';
+    const projectStart = sections && sections.length > 0 ? sections[0].start_station : 0;
+    const projectEnd = sections && sections.length > 0 ? sections[sections.length - 1].end_station : totalLength;
+    
+    let totalSpacingPoints = totalCracks;
+    if (!sortedCracks.some(c => c.distance === projectStart)) totalSpacingPoints++;
+    if (!sortedCracks.some(c => c.distance === projectEnd)) totalSpacingPoints++;
+    const totalNumSpacings = totalSpacingPoints - 1;
+    
+    const totalAvgSpacing = totalNumSpacings > 0 ? ((projectEnd - projectStart) / totalNumSpacings).toFixed(1) : '—';
+
+    const overviewMetadata = `Project Overview  |  DMI ${projectStart} - ${projectEnd}  |  ${totalCracks} cracks  |  Average Spacing: ${totalAvgSpacing} ft`;
 
     return (
         <div className="card">
@@ -296,7 +301,29 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                 />
                 <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Scroll →</span>
                 <button
-                    onClick={downloadChart}
+                    onClick={() => handleCopy(false, null, overviewMetadata, 'overview')}
+                    title="Copy chart to clipboard"
+                    style={{
+                        padding: '0.3rem 0.75rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        background: copiedId === 'overview' ? '#10b981' : '#f8fafc',
+                        color: copiedId === 'overview' ? '#fff' : '#475569',
+                        border: '1px solid',
+                        borderColor: copiedId === 'overview' ? '#10b981' : '#cbd5e1',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        transition: 'all 0.2s ease'
+                    }}
+                >
+                    {copiedId === 'overview' ? '✓ Copied' : '📋 Copy PNG'}
+                </button>
+                <button
+                    onClick={() => handleDownload(false, null, 'overview', overviewMetadata)}
                     title="Download chart as PNG"
                     style={{
                         padding: '0.3rem 0.75rem',
@@ -395,15 +422,16 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                         </g>
                     ))}
 
-                    {/* Station (ft) axis label */}
+                    {/* DMI (ft) axis label */}
                     <text
-                        x={VB_WIDTH / 2}
+                        x={scale(totalLength / 2, totalLength)}
                         y={AXIS_LABEL_Y}
-                        fontSize="12"
+                        fontSize="14"
+                        fontWeight="bold"
                         textAnchor="middle"
-                        fill="#94a3b8"
+                        fill="#64748b"
                     >
-                        Station (ft)
+                        DMI (ft)
                     </text>
 
                     {/* Minor gridlines every 10 ft — no labels */}
@@ -507,9 +535,14 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                         ).sort((a, b) => a.distance - b.distance);
                         const secCrackCount = secCracks.length;
 
-                        const avgSpacing = secCrackCount > 1 
-                            ? ((secCracks[secCrackCount - 1].distance - secCracks[0].distance) / (secCrackCount - 1)).toFixed(1) 
-                            : '—';
+                        let secSpacingPoints = secCrackCount;
+                        if (!secCracks.some(c => c.distance === sec.start_station)) secSpacingPoints++;
+                        if (!secCracks.some(c => c.distance === sec.end_station)) secSpacingPoints++;
+                        const secNumSpacings = secSpacingPoints - 1;
+
+                        const avgSpacing = secNumSpacings > 0 ? ((sec.end_station - sec.start_station) / secNumSpacings).toFixed(1) : '—';
+
+                        const sectionMetadata = `${sec.name}  |  DMI ${sec.start_station} - ${sec.end_station}  |  Steel: ${sec.steel_ratio ?? 0}%  |  ${secCrackCount} cracks  |  Average Spacing: ${avgSpacing} ft`;
 
                         return (
                             <div
@@ -540,7 +573,7 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                         <span style={{ fontWeight: 700, color: '#1e293b' }}>{sec.name}</span>
                                         <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                            Sta. {sec.start_station} – {sec.end_station}
+                                            DMI {sec.start_station} – {sec.end_station}
                                         </span>
                                         <div style={{ display: 'flex', gap: '0.4rem' }}>
                                             <span
@@ -601,11 +634,34 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                             />
                                             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Scroll →</span>
                                             <button
-                                                onClick={() => downloadSectionChart(idx, sec.name)}
+                                                onClick={() => handleCopy(true, idx, sectionMetadata, `section-${idx}`)}
+                                                title="Copy chart to clipboard"
+                                                style={{
+                                                    padding: '0.3rem 0.75rem',
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 600,
+                                                    background: copiedId === `section-${idx}` ? '#10b981' : '#f8fafc',
+                                                    color: copiedId === `section-${idx}` ? '#fff' : '#475569',
+                                                    border: '1px solid',
+                                                    borderColor: copiedId === `section-${idx}` ? '#10b981' : '#cbd5e1',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    whiteSpace: 'nowrap',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.3rem',
+                                                    transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                {copiedId === `section-${idx}` ? '✓ Copied' : '📋 Copy PNG'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleDownload(true, idx, sec.name, sectionMetadata)}
                                                 style={{
                                                     padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
                                                     background: '#2563eb', color: '#fff', border: 'none',
-                                                    borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap'
+                                                    borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    display: 'flex', alignItems: 'center', gap: '0.3rem'
                                                 }}
                                             >
                                                 ⬇ Download PNG

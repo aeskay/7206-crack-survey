@@ -19,16 +19,16 @@ const CrackSpacingChart = ({ cracks, surveyDays, sections }) => {
             const originalIndex = surveyDays.findIndex(d => d.id === day.id);
             const daysUpToCurrent = surveyDays.slice(0, originalIndex + 1).map(d => parseInt(d.id, 10));
             const cracksUpToDay = secCracks
-                .filter(c => daysUpToCurrent.includes(parseInt(c.day_id, 10)))
-                .sort((a, b) => a.distance - b.distance);
+                .filter(c => daysUpToCurrent.includes(parseInt(c.day_id, 10)));
+                
+            let spacingPoints = cracksUpToDay.length;
+            if (!cracksUpToDay.some(c => c.distance === sec.start_station)) spacingPoints++;
+            if (!cracksUpToDay.some(c => c.distance === sec.end_station)) spacingPoints++;
+            
+            const numSpacings = spacingPoints - 1;
+            if (numSpacings <= 0) return null;
 
-            if (cracksUpToDay.length < 2) return null;
-
-            let totalSpacing = 0;
-            for (let i = 1; i < cracksUpToDay.length; i++) {
-                totalSpacing += (cracksUpToDay[i].distance - cracksUpToDay[i - 1].distance);
-            }
-            return totalSpacing / (cracksUpToDay.length - 1);
+            return (sec.end_station - sec.start_station) / numSpacings;
         });
 
         const colors = ['#2563eb', '#dc2626', '#16a34a', '#8b5cf6', '#f59e0b', '#0ea5e9', '#db2777', '#14b8a6'];
@@ -56,12 +56,12 @@ const CrackSpacingChart = ({ cracks, surveyDays, sections }) => {
                     xaxis: {
                         title: { text: '<b>Age (Survey Days)</b>', font: { size: 16, color: 'black' } },
                         tickfont: { size: 14, color: 'black' },
-                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
                     },
                     yaxis: {
                         title: { text: '<b>Average Crack Spacing (ft)</b>', font: { size: 16, color: 'black' } },
                         tickfont: { size: 14, color: 'black' },
-                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
                         rangemode: 'tozero'
                     },
                     legend: { orientation: 'h', y: -0.25, x: 0.5, xanchor: 'center', font: { color: 'black', size: 14 }, bordercolor: 'black', borderwidth: 1 }

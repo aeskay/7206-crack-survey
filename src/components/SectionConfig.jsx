@@ -105,7 +105,7 @@ const SectionConfig = ({ sections, onSave }) => {
                             />
                         </div>
                         <div>
-                            <label>Start Station</label>
+                            <label>Start DMI</label>
                             <input
                                 value={sec.start_station}
                                 onChange={(e) => updateSection(idx, 'start_station', e.target.value)}
@@ -113,7 +113,7 @@ const SectionConfig = ({ sections, onSave }) => {
                             />
                         </div>
                         <div>
-                            <label>End Station</label>
+                            <label>End DMI</label>
                             <input
                                 value={sec.end_station}
                                 onChange={(e) => updateSection(idx, 'end_station', e.target.value)}

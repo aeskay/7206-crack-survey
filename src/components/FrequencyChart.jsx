@@ -49,20 +49,66 @@ const FrequencyCommonLayout = {
     xaxis: {
         title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16, color: 'black' } },
                         tickfont: { size: 14, color: 'black' },
-                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside',
+                        showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
         tickangle: -45,
         type: 'category'
     },
     yaxis: {
-        title: { text: '<b>Frequency (Count)</b>', font: { size: 16, color: 'black' } }
-    ,
-                        tickfont: { size: 14, color: 'black' },
-                        showline: true, linewidth: 1, linecolor: 'black', mirror: 'all', ticks: 'inside'},
+        title: { text: '<b>Frequency (Count)</b>', font: { size: 16, color: 'black' } },
+        tickfont: { size: 14, color: 'black' },
+        showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
+        rangemode: 'nonnegative'
+    },
     legend: { orientation: 'h', y: -0.3 }
+};
+
+const handleExport = (divId, metadata, name, action) => {
+    return new Promise((resolve, reject) => {
+        const gd = document.getElementById(divId);
+        if (!gd) return resolve();
+        Plotly.toImage(gd, { format: 'png', scale: 2 }).then(dataUrl => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const topPadding = 60;
+                canvas.width = img.width;
+                canvas.height = img.height + topPadding;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, topPadding);
+                
+                ctx.font = 'bold 22px sans-serif';
+                ctx.fillStyle = '#1e293b';
+                ctx.fillText(metadata, 140, 40);
+                
+                if (action === 'download') {
+                    const link = document.createElement('a');
+                    link.download = `crack-survey-freq-${name.replace(/\s+/g, '-').toLowerCase()}.png`;
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                    resolve();
+                } else if (action === 'copy') {
+                    canvas.toBlob(blob => {
+                        if (!blob) return resolve();
+                        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                            .then(resolve)
+                            .catch(err => {
+                                console.error('Failed to copy: ', err);
+                                reject(err);
+                            });
+                    });
+                }
+            };
+            img.src = dataUrl;
+        });
+    });
 };
 
 const FrequencyChart = ({ cracks, surveyDays, sections }) => {
     const [expandedSections, setExpandedSections] = useState({});
+    const [copiedId, setCopiedId] = useState(null);
 
     const toggleSection = (idx) => {
         setExpandedSections(prev => ({
@@ -70,34 +116,71 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
             [idx]: !prev[idx]
         }));
     };
-
     if (!cracks || cracks.length === 0) return null;
 
-    const overviewData = getFrequencyData(cracks, surveyDays);
+    const chartSurveyDays = surveyDays.filter(day => day.name !== 'ACC');
+
+    const handleCopy = (divId, metadata, idString) => {
+        handleExport(divId, metadata, idString, 'copy').then(() => {
+            setCopiedId(idString);
+            setTimeout(() => setCopiedId(null), 2000);
+        });
+    };
+
+    const overviewData = getFrequencyData(cracks, chartSurveyDays);
+
+    const projectStart = sections && sections.length > 0 ? sections[0].start_station : 0;
+    const totalLength = sections && sections.length > 0 ? sections[sections.length - 1].end_station : 1000;
+    const totalCracks = cracks.length;
+    
+    let totalSpacingPoints = totalCracks;
+    if (!cracks.some(c => c.distance === projectStart)) totalSpacingPoints++;
+    if (!cracks.some(c => c.distance === totalLength)) totalSpacingPoints++;
+    const totalNumSpacings = totalSpacingPoints - 1;
+    
+    const totalAvgSpacing = totalNumSpacings > 0 ? ((totalLength - projectStart) / totalNumSpacings).toFixed(1) : '—';
+    const overviewMetadata = `Project Overview  |  DMI ${projectStart} - ${totalLength}  |  ${totalCracks} cracks  |  Average Spacing: ${totalAvgSpacing} ft`;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
             <div className="card" style={{ marginBottom: 0 }}>
-                <h2 className="title">Project Overview Frequency Chart</h2>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                    <h2 className="title" style={{ margin: 0 }}>Project Overview Frequency Chart</h2>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <button
+                            onClick={() => handleCopy('freq-overview', overviewMetadata, 'overview')}
+                            title="Copy chart to clipboard"
+                            style={{
+                                padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                background: copiedId === 'overview' ? '#10b981' : '#f8fafc',
+                                color: copiedId === 'overview' ? '#fff' : '#475569',
+                                border: '1px solid', borderColor: copiedId === 'overview' ? '#10b981' : '#cbd5e1',
+                                borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'all 0.2s ease'
+                            }}
+                        >
+                            {copiedId === 'overview' ? '✓ Copied' : '📋 Copy PNG'}
+                        </button>
+                        <button
+                            onClick={() => handleExport('freq-overview', overviewMetadata, 'overview', 'download')}
+                            title="Download chart as PNG"
+                            style={{
+                                padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                background: '#2563eb', color: '#fff', border: 'none',
+                                borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                display: 'flex', alignItems: 'center', gap: '0.3rem'
+                            }}
+                        >
+                            ⬇ Download PNG
+                        </button>
+                    </div>
+                </div>
                 <Plot
+                    divId="freq-overview"
                     data={overviewData}
                     layout={FrequencyCommonLayout}
                     useResizeHandler={true}
-                config={{
-                    modeBarButtonsToRemove: ['toImage'],
-                    modeBarButtonsToAdd: [{
-                        name: 'Download plot as a png',
-                        icon: Plotly.Icons.camera,
-                        click: function(gd) {
-                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
-                            Plotly.downloadImage(
-                                { data: visibleData, layout: gd.layout }, 
-                                { format: 'png', filename: 'chart' }
-                            );
-                        }
-                    }]
-                }}
-
+                    config={{ displayModeBar: false }}
                     style={{ width: "100%", height: "400px" }}
                 />
             </div>
@@ -113,10 +196,14 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                             (c) => c.distance >= sec.start_station && c.distance <= sec.end_station
                         );
 
-                        const sortedCracks = [...secCracks].sort((a, b) => a.distance - b.distance);
-                        const avgSpacing = sortedCracks.length > 1 
-                            ? ((sortedCracks[sortedCracks.length - 1].distance - sortedCracks[0].distance) / (sortedCracks.length - 1)).toFixed(1) 
-                            : '—';
+                        let secSpacingPoints = secCracks.length;
+                        if (!secCracks.some(c => c.distance === sec.start_station)) secSpacingPoints++;
+                        if (!secCracks.some(c => c.distance === sec.end_station)) secSpacingPoints++;
+                        const secNumSpacings = secSpacingPoints - 1;
+                        
+                        const avgSpacing = secNumSpacings > 0 ? ((sec.end_station - sec.start_station) / secNumSpacings).toFixed(1) : '—';
+
+                        const sectionMetadata = `${sec.name}  |  DMI ${sec.start_station} - ${sec.end_station}  |  Steel: ${sec.steel_ratio ?? 0}%  |  ${secCracks.length} cracks  |  Average Spacing: ${avgSpacing} ft`;
 
                         return (
                             <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '0.75rem', overflow: 'hidden' }}>
@@ -131,7 +218,7 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                         <span style={{ fontWeight: 700, color: '#1e293b' }}>{sec.name}</span>
                                         <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                            Sta. {sec.start_station} – {sec.end_station}
+                                            DMI {sec.start_station} – {sec.end_station}
                                         </span>
                                         <div style={{ display: 'flex', gap: '0.4rem' }}>
                                             <span style={{ background: '#10b981', color: '#fff', borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}>
@@ -150,25 +237,40 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
 
                                 {isOpen && (
                                     <div style={{ padding: '0.75rem 1rem', background: '#fff' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                                            <button
+                                                onClick={() => handleCopy(`freq-sec-${idx}`, sectionMetadata, `sec-${idx}`)}
+                                                title="Copy chart to clipboard"
+                                                style={{
+                                                    padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                                    background: copiedId === `sec-${idx}` ? '#10b981' : '#f8fafc',
+                                                    color: copiedId === `sec-${idx}` ? '#fff' : '#475569',
+                                                    border: '1px solid', borderColor: copiedId === `sec-${idx}` ? '#10b981' : '#cbd5e1',
+                                                    borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    display: 'flex', alignItems: 'center', gap: '0.3rem', transition: 'all 0.2s ease'
+                                                }}
+                                            >
+                                                {copiedId === `sec-${idx}` ? '✓ Copied' : '📋 Copy PNG'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleExport(`freq-sec-${idx}`, sectionMetadata, sec.name, 'download')}
+                                                title="Download chart as PNG"
+                                                style={{
+                                                    padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                                    background: '#2563eb', color: '#fff', border: 'none',
+                                                    borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    display: 'flex', alignItems: 'center', gap: '0.3rem'
+                                                }}
+                                            >
+                                                ⬇ Download PNG
+                                            </button>
+                                        </div>
                                         <Plot
-                                            data={getFrequencyData(secCracks, surveyDays)}
+                                            divId={`freq-sec-${idx}`}
+                                            data={getFrequencyData(secCracks, chartSurveyDays)}
                                             layout={FrequencyCommonLayout}
                                             useResizeHandler={true}
-                config={{
-                    modeBarButtonsToRemove: ['toImage'],
-                    modeBarButtonsToAdd: [{
-                        name: 'Download plot as a png',
-                        icon: Plotly.Icons.camera,
-                        click: function(gd) {
-                            const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
-                            Plotly.downloadImage(
-                                { data: visibleData, layout: gd.layout }, 
-                                { format: 'png', filename: 'chart' }
-                            );
-                        }
-                    }]
-                }}
-
+                                            config={{ displayModeBar: false }}
                                             style={{ width: "100%", height: "350px" }}
                                         />
                                     </div>
