@@ -240,14 +240,16 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
         }));
 
     const visibleCracks = cracks.filter((c) => visibleDays.includes(c.day_id));
-    const sortedCracks = [...visibleCracks].sort((a, b) => a.distance - b.distance);
-    const totalCracks = sortedCracks.length;
+    
+    // Overview math uses ALL cracks, unique DMIs only
     const projectStart = sections && sections.length > 0 ? sections[0].start_station : 0;
     const projectEnd = sections && sections.length > 0 ? sections[sections.length - 1].end_station : totalLength;
     
-    let totalSpacingPoints = totalCracks;
-    if (!sortedCracks.some(c => c.distance === projectStart)) totalSpacingPoints++;
-    if (!sortedCracks.some(c => c.distance === projectEnd)) totalSpacingPoints++;
+    const uniqueDists = new Set(cracks.map(c => c.distance));
+    const totalCracks = cracks.length;
+    let totalSpacingPoints = uniqueDists.size;
+    if (!uniqueDists.has(projectStart)) totalSpacingPoints++;
+    if (!uniqueDists.has(projectEnd)) totalSpacingPoints++;
     const totalNumSpacings = totalSpacingPoints - 1;
     
     const totalAvgSpacing = totalNumSpacings > 0 ? ((projectEnd - projectStart) / totalNumSpacings).toFixed(1) : '—';
@@ -533,11 +535,17 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                 c.distance <= sec.end_station &&
                                 visibleDays.includes(c.day_id)
                         ).sort((a, b) => a.distance - b.distance);
-                        const secCrackCount = secCracks.length;
 
-                        let secSpacingPoints = secCrackCount;
-                        if (!secCracks.some(c => c.distance === sec.start_station)) secSpacingPoints++;
-                        if (!secCracks.some(c => c.distance === sec.end_station)) secSpacingPoints++;
+                        // Math uses all cracks for the section
+                        const allSecCracks = cracks.filter(
+                            (c) => c.distance >= sec.start_station && c.distance <= sec.end_station
+                        );
+                        const secCrackCount = allSecCracks.length;
+
+                        const secUniqueDists = new Set(allSecCracks.map(c => c.distance));
+                        let secSpacingPoints = secUniqueDists.size;
+                        if (!secUniqueDists.has(sec.start_station)) secSpacingPoints++;
+                        if (!secUniqueDists.has(sec.end_station)) secSpacingPoints++;
                         const secNumSpacings = secSpacingPoints - 1;
 
                         const avgSpacing = secNumSpacings > 0 ? ((sec.end_station - sec.start_station) / secNumSpacings).toFixed(1) : '—';

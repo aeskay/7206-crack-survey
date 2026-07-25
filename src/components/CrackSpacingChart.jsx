@@ -75,9 +75,10 @@ const CrackSpacingChart = ({ cracks, surveyDays, sections }) => {
             const cracksUpToDay = secCracks
                 .filter(c => daysUpToCurrent.includes(parseInt(c.day_id, 10)));
                 
-            let spacingPoints = cracksUpToDay.length;
-            if (!cracksUpToDay.some(c => c.distance === sec.start_station)) spacingPoints++;
-            if (!cracksUpToDay.some(c => c.distance === sec.end_station)) spacingPoints++;
+            const uniqueDists = new Set(cracksUpToDay.map(c => c.distance));
+            let spacingPoints = uniqueDists.size;
+            if (!uniqueDists.has(sec.start_station)) spacingPoints++;
+            if (!uniqueDists.has(sec.end_station)) spacingPoints++;
             
             const numSpacings = spacingPoints - 1;
             if (numSpacings <= 0) return null;

@@ -138,10 +138,11 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
   
   const overviewData = getSCurveData(cracks, chartSurveyDays, projectStart, totalLength);
 
+  const uniqueDists = new Set(cracks.map(c => c.distance));
   const totalCracks = cracks.length;
-  let totalSpacingPoints = totalCracks;
-  if (!cracks.some(c => c.distance === projectStart)) totalSpacingPoints++;
-  if (!cracks.some(c => c.distance === totalLength)) totalSpacingPoints++;
+  let totalSpacingPoints = uniqueDists.size;
+  if (!uniqueDists.has(projectStart)) totalSpacingPoints++;
+  if (!uniqueDists.has(totalLength)) totalSpacingPoints++;
   const totalNumSpacings = totalSpacingPoints - 1;
   const totalAvgSpacing = totalNumSpacings > 0 ? ((totalLength - projectStart) / totalNumSpacings).toFixed(1) : '—';
   
@@ -204,9 +205,10 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
               (c) => c.distance >= sec.start_station && c.distance <= sec.end_station
             );
 
-            let secSpacingPoints = secCracks.length;
-            if (!secCracks.some(c => c.distance === sec.start_station)) secSpacingPoints++;
-            if (!secCracks.some(c => c.distance === sec.end_station)) secSpacingPoints++;
+            const secUniqueDists = new Set(secCracks.map(c => c.distance));
+            let secSpacingPoints = secUniqueDists.size;
+            if (!secUniqueDists.has(sec.start_station)) secSpacingPoints++;
+            if (!secUniqueDists.has(sec.end_station)) secSpacingPoints++;
             const secNumSpacings = secSpacingPoints - 1;
             
             const avgSpacing = secNumSpacings > 0 ? ((sec.end_station - sec.start_station) / secNumSpacings).toFixed(1) : '—';

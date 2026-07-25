@@ -9,7 +9,8 @@ const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endSt
         const daysUpToCurrent = surveyDays.slice(0, index + 1).map(d => parseInt(d.id, 10));
         const dayCracks = filteredCracks.filter(c => daysUpToCurrent.includes(parseInt(c.day_id, 10)));
 
-        const sortedDists = dayCracks.map(c => c.distance).sort((a, b) => a - b);
+        let sortedDists = dayCracks.map(c => c.distance);
+        sortedDists = Array.from(new Set(sortedDists)).sort((a, b) => a - b);
         
         if (startStation !== null && endStation !== null) {
             const distsSet = new Set(sortedDists);
@@ -21,7 +22,8 @@ const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endSt
         if (sortedDists.length < 2) return null;
         const spacings = [];
         for (let i = 1; i < sortedDists.length; i++) {
-            spacings.push(sortedDists[i] - sortedDists[i - 1]);
+            const sp = sortedDists[i] - sortedDists[i - 1];
+            if (sp > 0) spacings.push(sp);
         }
 
         const counts = new Array(9).fill(0);
@@ -138,11 +140,13 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
     const totalLength = sections && sections.length > 0 ? sections[sections.length - 1].end_station : 1000;
     
     const overviewData = getFrequencyData(cracks, chartSurveyDays, projectStart, totalLength);
+    
+    const uniqueDists = new Set(cracks.map(c => c.distance));
     const totalCracks = cracks.length;
     
-    let totalSpacingPoints = totalCracks;
-    if (!cracks.some(c => c.distance === projectStart)) totalSpacingPoints++;
-    if (!cracks.some(c => c.distance === totalLength)) totalSpacingPoints++;
+    let totalSpacingPoints = uniqueDists.size;
+    if (!uniqueDists.has(projectStart)) totalSpacingPoints++;
+    if (!uniqueDists.has(totalLength)) totalSpacingPoints++;
     const totalNumSpacings = totalSpacingPoints - 1;
     
     const totalAvgSpacing = totalNumSpacings > 0 ? ((totalLength - projectStart) / totalNumSpacings).toFixed(1) : '—';
