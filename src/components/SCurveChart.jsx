@@ -3,6 +3,10 @@ import Plot from 'react-plotly.js';
 import Plotly from 'plotly.js-dist-min';
 
 const getSCurveData = (filteredCracks, surveyDays, startStation = null, endStation = null) => {
+  let prevUniqueSpacings = null;
+  let prevCumulativePercent = null;
+  let overlapCount = 0;
+
   return surveyDays.map((day, index) => {
     const daysUpToCurrent = surveyDays.slice(0, index + 1).map(d => parseInt(d.id, 10));
     const dayCracks = filteredCracks.filter(c => daysUpToCurrent.includes(parseInt(c.day_id, 10)));
@@ -35,6 +39,21 @@ const getSCurveData = (filteredCracks, surveyDays, startStation = null, endStati
       }
     }
 
+    let isIdentical = false;
+    if (prevUniqueSpacings && prevUniqueSpacings.length === uniqueSpacings.length) {
+      isIdentical = prevUniqueSpacings.every((v, i) => v === uniqueSpacings[i]) &&
+                    prevCumulativePercent.every((v, i) => v === cumulativePercent[i]);
+    }
+
+    if (isIdentical) {
+      overlapCount++;
+    } else {
+      overlapCount = 0;
+    }
+
+    prevUniqueSpacings = uniqueSpacings;
+    prevCumulativePercent = cumulativePercent;
+
     return {
       x: uniqueSpacings,
       y: cumulativePercent,
@@ -44,11 +63,11 @@ const getSCurveData = (filteredCracks, surveyDays, startStation = null, endStati
       line: { 
           color: day.color,
           width: 2.5,
-          dash: ['solid', 'dash', 'dot', 'dashdot', 'longdash'][index % 5]
+          dash: ['solid', 'dash', 'dot', 'dashdot', 'longdash'][overlapCount % 5]
       },
       marker: { 
           size: 7,
-          symbol: ['circle', 'square', 'diamond', 'triangle-up', 'x'][index % 5]
+          symbol: ['circle', 'square', 'diamond', 'triangle-up', 'x'][overlapCount % 5]
       }
     };
   }).filter(d => d !== null);
