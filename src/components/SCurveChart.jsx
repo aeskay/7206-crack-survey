@@ -41,7 +41,15 @@ const getSCurveData = (filteredCracks, surveyDays, startStation = null, endStati
       type: 'scatter',
       mode: 'lines+markers',
       name: day.name,
-      line: { color: day.color }
+      line: { 
+          color: day.color,
+          width: 2.5,
+          dash: ['solid', 'dash', 'dot', 'dashdot', 'longdash'][index % 5]
+      },
+      marker: { 
+          size: 7,
+          symbol: ['circle', 'square', 'diamond', 'triangle-up', 'x'][index % 5]
+      }
     };
   }).filter(d => d !== null);
 };
