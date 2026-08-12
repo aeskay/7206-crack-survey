@@ -76,7 +76,7 @@ const handleExport = (divId, metadata, name, action) => {
         const gd = document.getElementById(divId);
         if (!gd) return resolve();
         const visibleData = gd.data.filter(d => d.visible !== 'legendonly');
-        Plotly.toImage({ data: visibleData, layout: gd.layout }, { format: 'png', scale: 2, width: gd.clientWidth, height: gd.clientHeight }).then(dataUrl => {
+        Plotly.toImage({ data: visibleData, layout: gd.layout }, { format: 'png', scale: 2 }).then(dataUrl => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
