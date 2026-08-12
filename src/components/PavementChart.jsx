@@ -173,7 +173,8 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                 ctx.fillRect(0, 0, w, h);
                 ctx.drawImage(img, 0, 0, w, svgH);
 
-                drawLegendOntoCanvas(ctx, (isSection ? MINI_PADDING : 20) * scale, svgH + (10 * scale), scale, surveyDays, visibleDays);
+                const activeDays = surveyDays.filter(d => visibleDays.includes(d.id));
+                drawLegendOntoCanvas(ctx, (isSection ? MINI_PADDING : 20) * scale, svgH + (10 * scale), scale, activeDays, visibleDays);
 
                 if (metadata) {
                     ctx.font = `bold ${11 * scale}px sans-serif`;
