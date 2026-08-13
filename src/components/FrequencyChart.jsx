@@ -55,9 +55,9 @@ const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endSt
 const FrequencyCommonLayout = {
     autosize: true,
     barmode: 'group',
-    margin: { l: 70, r: 30, t: 30, b: 70 },
+    margin: { l: 70, r: 30, t: 30, b: 110 },
     xaxis: {
-        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16, color: 'black' } },
+        title: { text: '<b>Crack Spacing (ft)</b>', font: { size: 16, color: 'black' }, standoff: 30 },
                         tickfont: { size: 14, color: 'black' },
                         showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
         tickangle: -45,
