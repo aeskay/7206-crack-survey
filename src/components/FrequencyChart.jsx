@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
 import Plotly from 'plotly.js-dist-min';
+import { exportPlotlyDataToCsv } from '../utils/csvExport';
 const BINS = ['1-2', '2-4', '4-6', '6-8', '8-10', '10-12', '12-14', '14-16', '>16'];
 
 const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endStation = null) => {
@@ -185,6 +186,21 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                         >
                             ⬇ Download PNG
                         </button>
+                        <button
+                            onClick={() => {
+                                const gd = document.getElementById('freq-overview');
+                                exportPlotlyDataToCsv(gd, 'freq-overview');
+                            }}
+                            title="Export data as CSV"
+                            style={{
+                                padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                background: '#10b981', color: '#fff', border: 'none',
+                                borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                display: 'flex', alignItems: 'center', gap: '0.3rem'
+                            }}
+                        >
+                            📄 Export CSV
+                        </button>
                     </div>
                 </div>
                 <Plot
@@ -275,6 +291,21 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                                                 }}
                                             >
                                                 ⬇ Download PNG
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const gd = document.getElementById(`freq-sec-${idx}`);
+                                                    exportPlotlyDataToCsv(gd, `freq-${sec.name.replace(/\\s+/g, '-').toLowerCase()}`);
+                                                }}
+                                                title="Export data as CSV"
+                                                style={{
+                                                    padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                                    background: '#10b981', color: '#fff', border: 'none',
+                                                    borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    display: 'flex', alignItems: 'center', gap: '0.3rem'
+                                                }}
+                                            >
+                                                📄 Export CSV
                                             </button>
                                         </div>
                                         <Plot

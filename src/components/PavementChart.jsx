@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, forwardRef, useEffect } from 'react';
+import { exportCracksToCsv } from '../utils/csvExport';
 
 // --- Constants for the internal SVG coordinate system ---
 const VB_WIDTH = 1000;      // viewBox internal width (scales to container)
@@ -345,6 +346,20 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                 >
                     ⬇ Download PNG
                 </button>
+                <button
+                    onClick={() => {
+                        exportCracksToCsv(cracks, surveyDays, sections, visibleDays, 'cracks-overview');
+                    }}
+                    title="Export data as CSV"
+                    style={{
+                        padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                        background: '#10b981', color: '#fff', border: 'none',
+                        borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                        display: 'flex', alignItems: 'center', gap: '0.3rem'
+                    }}
+                >
+                    📄 Export CSV
+                </button>
             </div>
 
             {/* ── Main overview chart — scrollable when zoomed ── */}
@@ -674,6 +689,20 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                                 }}
                                             >
                                                 ⬇ Download PNG
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    exportCracksToCsv(cracks, surveyDays, [sec], visibleDays, `cracks-${sec.name.replace(/\\s+/g, '-').toLowerCase()}`);
+                                                }}
+                                                title="Export data as CSV"
+                                                style={{
+                                                    padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                                                    background: '#10b981', color: '#fff', border: 'none',
+                                                    borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                                                    display: 'flex', alignItems: 'center', gap: '0.3rem'
+                                                }}
+                                            >
+                                                📄 Export CSV
                                             </button>
                                         </div>
                                         <SectionMiniChart

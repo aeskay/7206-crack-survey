@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
 import Plotly from 'plotly.js-dist-min';
+import { exportPlotlyDataToCsv } from '../utils/csvExport';
 
 const getSCurveData = (filteredCracks, surveyDays, startStation = null, endStation = null) => {
   let prevUniqueSpacings = null;
@@ -209,6 +210,21 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
             >
               ⬇ Download PNG
             </button>
+            <button
+              onClick={() => {
+                const gd = document.getElementById('scurve-overview');
+                exportPlotlyDataToCsv(gd, 'scurve-overview');
+              }}
+              title="Export data as CSV"
+              style={{
+                padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                background: '#10b981', color: '#fff', border: 'none',
+                borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: '0.3rem'
+              }}
+            >
+              📄 Export CSV
+            </button>
           </div>
         </div>
         <Plot
@@ -301,6 +317,21 @@ const SCurveChart = ({ cracks, surveyDays, sections }) => {
                         }}
                       >
                         ⬇ Download PNG
+                      </button>
+                      <button
+                        onClick={() => {
+                            const gd = document.getElementById(`scurve-sec-${idx}`);
+                            exportPlotlyDataToCsv(gd, `scurve-${sec.name.replace(/\\s+/g, '-').toLowerCase()}`);
+                        }}
+                        title="Export data as CSV"
+                        style={{
+                          padding: '0.3rem 0.75rem', fontSize: '0.78rem', fontWeight: 600,
+                          background: '#10b981', color: '#fff', border: 'none',
+                          borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                          display: 'flex', alignItems: 'center', gap: '0.3rem'
+                        }}
+                      >
+                        📄 Export CSV
                       </button>
                     </div>
                     <Plot

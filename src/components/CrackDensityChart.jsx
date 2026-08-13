@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
 import Plotly from 'plotly.js-dist-min';
+import { exportPlotlyDataToCsv } from '../utils/csvExport';
 
 const handleExport = (divId, metadata, name, action) => {
   return new Promise((resolve, reject) => {
@@ -130,6 +131,23 @@ const CrackDensityChart = ({ cracks, surveyDays, sections }) => {
                         onMouseOut={(e) => e.currentTarget.style.background = '#3b82f6'}
                     >
                         📥 Download
+                    </button>
+                    <button
+                        onClick={() => {
+                            const gd = document.getElementById('crack-density-plot');
+                            exportPlotlyDataToCsv(gd, 'crack-survey-density');
+                        }}
+                        title="Export data as CSV"
+                        style={{
+                            background: '#10b981', border: 'none', color: '#fff',
+                            padding: '0.4rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem',
+                            fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem',
+                            transition: 'background 0.2s'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = '#059669'}
+                        onMouseOut={(e) => e.currentTarget.style.background = '#10b981'}
+                    >
+                        📄 Export CSV
                     </button>
                 </div>
             </div>
