@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
 import Plotly from 'plotly.js-dist-min';
 import { exportPlotlyDataToCsv } from '../utils/csvExport';
-const BINS = ['1-2', '2-4', '4-6', '6-8', '8-10', '10-12', '12-14', '14-16', '>16'];
+const BINS = ['< 2.0', '2.0 - 3.9', '4.0 - 5.9', '6.0 - 7.9', '8.0 - 9.9', '10.0 - 11.9', '12.0 - 13.9', '14.0 - 15.9', '≥ 16.0'];
 
 const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endStation = null) => {
     return surveyDays.map((day, index) => {
