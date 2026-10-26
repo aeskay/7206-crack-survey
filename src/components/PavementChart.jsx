@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, forwardRef, useEffect } from 'react';
 import { exportCracksToCsv } from '../utils/csvExport';
+import { calculateSpacingStats } from '../utils/math';
 
 // --- Constants for the internal SVG coordinate system ---
 const VB_WIDTH = 1000;      // viewBox internal width (scales to container)
@@ -247,16 +248,11 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
     const projectStart = sections && sections.length > 0 ? sections[0].start_station : 0;
     const projectEnd = sections && sections.length > 0 ? sections[sections.length - 1].end_station : totalLength;
     
-    const uniqueDists = new Set(cracks.map(c => c.distance));
     const totalCracks = cracks.length;
-    let totalSpacingPoints = uniqueDists.size;
-    if (!uniqueDists.has(projectStart)) totalSpacingPoints++;
-    if (!uniqueDists.has(projectEnd)) totalSpacingPoints++;
-    const totalNumSpacings = totalSpacingPoints - 1;
     
-    const totalAvgSpacing = totalNumSpacings > 0 ? ((projectEnd - projectStart) / totalNumSpacings).toFixed(1) : '—';
+    const { avgSpacing: totalAvgSpacing, stdDev: totalStdDev } = calculateSpacingStats(cracks, projectStart, projectEnd);
 
-    const overviewMetadata = `Project Overview  |  DMI ${projectStart} - ${projectEnd}  |  ${totalCracks} cracks  |  Average Spacing: ${totalAvgSpacing} ft`;
+    const overviewMetadata = `Project Overview  |  DMI ${projectStart} - ${projectEnd}  |  ${totalCracks} cracks  |  Average Spacing: ${totalAvgSpacing} ft (SD: ${totalStdDev})`;
 
     return (
         <div className="card">
@@ -287,7 +283,7 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                 fontWeight: 600,
                             }}
                         >
-                            Average Spacing: {totalAvgSpacing} ft
+                            Avg: {totalAvgSpacing} ft (SD: {totalStdDev})
                         </span>
                     </div>
                 </div>
@@ -558,15 +554,9 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                         );
                         const secCrackCount = allSecCracks.length;
 
-                        const secUniqueDists = new Set(allSecCracks.map(c => c.distance));
-                        let secSpacingPoints = secUniqueDists.size;
-                        if (!secUniqueDists.has(sec.start_station)) secSpacingPoints++;
-                        if (!secUniqueDists.has(sec.end_station)) secSpacingPoints++;
-                        const secNumSpacings = secSpacingPoints - 1;
+                        const { avgSpacing, stdDev } = calculateSpacingStats(allSecCracks, sec.start_station, sec.end_station);
 
-                        const avgSpacing = secNumSpacings > 0 ? ((sec.end_station - sec.start_station) / secNumSpacings).toFixed(1) : '—';
-
-                        const sectionMetadata = `${sec.name}  |  DMI ${sec.start_station} - ${sec.end_station}  |  Steel: ${sec.steel_ratio ?? 0}%  |  ${secCrackCount} cracks  |  Average Spacing: ${avgSpacing} ft`;
+                        const sectionMetadata = `${sec.name}  |  DMI ${sec.start_station} - ${sec.end_station}  |  Steel: ${sec.steel_ratio ?? 0}%  |  ${secCrackCount} cracks  |  Average Spacing: ${avgSpacing} ft (SD: ${stdDev})`;
 
                         return (
                             <div
@@ -635,7 +625,7 @@ const PavementChart = ({ sections, cracks, surveyDays }) => {
                                                     fontWeight: 600,
                                                 }}
                                             >
-                                                Average Spacing: {avgSpacing} ft
+                                                Avg: {avgSpacing} ft (SD: {stdDev})
                                             </span>
                                         </div>
                                     </div>

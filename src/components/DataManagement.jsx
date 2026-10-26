@@ -4,7 +4,7 @@ const DataManagement = ({ activeProject, onImportComplete }) => {
     const fileInputRef = useRef(null);
     const [isImporting, setIsImporting] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
-    const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8080';
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
     const handleExport = async () => {
         try {

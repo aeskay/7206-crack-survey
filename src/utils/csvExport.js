@@ -28,11 +28,40 @@ export const exportPlotlyDataToCsv = (gd, filenamePrefix) => {
         const headers = [xTitle, ...visibleData.map(d => (d.name || 'Value'))].map(h => `"${h.replace(/"/g, '""')}"`);
         csvContent += headers.join(",") + "\n";
         
-        const xValues = visibleData[0].x || [];
-        for (let i = 0; i < xValues.length; i++) {
-            const row = [`"${String(xValues[i]).replace(/"/g, '""')}"`];
+        // Build tick label lookup map if available
+        const tickMap = {};
+        if (gd.layout && gd.layout.xaxis && Array.isArray(gd.layout.xaxis.tickvals) && Array.isArray(gd.layout.xaxis.ticktext)) {
+            gd.layout.xaxis.tickvals.forEach((v, idx) => {
+                tickMap[v] = gd.layout.xaxis.ticktext[idx];
+            });
+        }
+
+        // Union of all x values across visible traces
+        const xValueMap = new Map();
+        visibleData.forEach((trace, traceIdx) => {
+            const xs = trace.x || [];
+            const ys = trace.y || [];
+            for (let i = 0; i < xs.length; i++) {
+                const xKey = xs[i];
+                if (!xValueMap.has(xKey)) {
+                    xValueMap.set(xKey, {});
+                }
+                xValueMap.get(xKey)[traceIdx] = ys[i];
+            }
+        });
+
+        // Sort keys (numeric or string)
+        const sortedKeys = Array.from(xValueMap.keys()).sort((a, b) => {
+            if (typeof a === 'number' && typeof b === 'number') return a - b;
+            return String(a).localeCompare(String(b), undefined, { numeric: true });
+        });
+
+        for (const xKey of sortedKeys) {
+            const label = tickMap[xKey] !== undefined ? tickMap[xKey] : xKey;
+            const rowObj = xValueMap.get(xKey);
+            const row = [`"${String(label).replace(/"/g, '""')}"`];
             for (let j = 0; j < visibleData.length; j++) {
-                const yVal = (visibleData[j].y && visibleData[j].y[i] !== undefined && visibleData[j].y[i] !== null) ? visibleData[j].y[i] : "";
+                const yVal = rowObj[j] !== undefined && rowObj[j] !== null ? rowObj[j] : "";
                 row.push(yVal);
             }
             csvContent += row.join(",") + "\n";

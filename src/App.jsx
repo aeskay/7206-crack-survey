@@ -11,6 +11,7 @@ import CrackSpacingChart from './components/CrackSpacingChart';
 import CrackDensityChart from './components/CrackDensityChart';
 import SpacingBoxPlotChart from './components/SpacingBoxPlotChart';
 import DataManagement from './components/DataManagement';
+import { useProjectTemperature } from './utils/useProjectTemperature';
 import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
@@ -32,6 +33,13 @@ function App() {
     const [apiError, setApiError] = useState(false);
     const [isLoadingProjects, setIsLoadingProjects] = useState(true);
     const [isLoadingData, setIsLoadingData] = useState(false);
+
+    const {
+        tempBundle,
+        saveBundle: handleSaveTempBundle,
+        updateSettings: handleUpdateTempSettings,
+        clearTemperature: handleClearTempData
+    } = useProjectTemperature(activeProject?.id);
 
     useEffect(() => {
         fetchProjects();
@@ -426,8 +434,26 @@ function App() {
                                 )}
                                 {analysisType === 'other' && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                        <CrackSpacingChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
-                                        <CrackPropagationChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
+                                        <CrackSpacingChart
+                                            sections={data.sections}
+                                            cracks={data.cracks}
+                                            surveyDays={data.survey_days}
+                                            projectId={activeProject?.id}
+                                            tempBundle={tempBundle}
+                                            onSaveTempBundle={handleSaveTempBundle}
+                                            onUpdateTempSettings={handleUpdateTempSettings}
+                                            onClearTempData={handleClearTempData}
+                                        />
+                                        <CrackPropagationChart
+                                            sections={data.sections}
+                                            cracks={data.cracks}
+                                            surveyDays={data.survey_days}
+                                            projectId={activeProject?.id}
+                                            tempBundle={tempBundle}
+                                            onSaveTempBundle={handleSaveTempBundle}
+                                            onUpdateTempSettings={handleUpdateTempSettings}
+                                            onClearTempData={handleClearTempData}
+                                        />
                                         <SpacingBoxPlotChart sections={data.sections} cracks={data.cracks} />
                                         <CrackDensityChart sections={data.sections} cracks={data.cracks} surveyDays={data.survey_days} />
                                     </div>

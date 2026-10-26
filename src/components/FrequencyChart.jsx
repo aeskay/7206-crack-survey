@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Plot from 'react-plotly.js';
 import Plotly from 'plotly.js-dist-min';
 import { exportPlotlyDataToCsv } from '../utils/csvExport';
+import { calculateSpacingStats } from '../utils/math';
 const BINS = ['< 2.0', '2.0 - 3.9', '4.0 - 5.9', '6.0 - 7.9', '8.0 - 9.9', '10.0 - 11.9', '12.0 - 13.9', '14.0 - 15.9', '≥ 16.0'];
 
 const getFrequencyData = (filteredCracks, surveyDays, startStation = null, endStation = null) => {
@@ -142,17 +143,10 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
     const totalLength = sections && sections.length > 0 ? sections[sections.length - 1].end_station : 1000;
     
     const overviewData = getFrequencyData(cracks, chartSurveyDays, projectStart, totalLength);
-    
-    const uniqueDists = new Set(cracks.map(c => c.distance));
     const totalCracks = cracks.length;
     
-    let totalSpacingPoints = uniqueDists.size;
-    if (!uniqueDists.has(projectStart)) totalSpacingPoints++;
-    if (!uniqueDists.has(totalLength)) totalSpacingPoints++;
-    const totalNumSpacings = totalSpacingPoints - 1;
-    
-    const totalAvgSpacing = totalNumSpacings > 0 ? ((totalLength - projectStart) / totalNumSpacings).toFixed(1) : '—';
-    const overviewMetadata = `Project Overview  |  DMI ${projectStart} - ${totalLength}  |  ${totalCracks} cracks  |  Average Spacing: ${totalAvgSpacing} ft`;
+    const { avgSpacing: totalAvgSpacing, stdDev: totalStdDev } = calculateSpacingStats(cracks, projectStart, totalLength);
+    const overviewMetadata = `Project Overview  |  DMI ${projectStart} - ${totalLength}  |  ${totalCracks} cracks  |  Average Spacing: ${totalAvgSpacing} ft (SD: ${totalStdDev})`;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -224,14 +218,9 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                             (c) => c.distance >= sec.start_station && c.distance <= sec.end_station
                         );
 
-                        let secSpacingPoints = secCracks.length;
-                        if (!secCracks.some(c => c.distance === sec.start_station)) secSpacingPoints++;
-                        if (!secCracks.some(c => c.distance === sec.end_station)) secSpacingPoints++;
-                        const secNumSpacings = secSpacingPoints - 1;
-                        
-                        const avgSpacing = secNumSpacings > 0 ? ((sec.end_station - sec.start_station) / secNumSpacings).toFixed(1) : '—';
+                        const { avgSpacing, stdDev } = calculateSpacingStats(secCracks, sec.start_station, sec.end_station);
 
-                        const sectionMetadata = `${sec.name}  |  DMI ${sec.start_station} - ${sec.end_station}  |  Steel: ${sec.steel_ratio ?? 0}%  |  ${secCracks.length} cracks  |  Average Spacing: ${avgSpacing} ft`;
+                        const sectionMetadata = `${sec.name}  |  DMI ${sec.start_station} - ${sec.end_station}  |  Steel: ${sec.steel_ratio ?? 0}%  |  ${secCracks.length} cracks  |  Average Spacing: ${avgSpacing} ft (SD: ${stdDev})`;
 
                         return (
                             <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '0.75rem', overflow: 'hidden' }}>
@@ -256,7 +245,7 @@ const FrequencyChart = ({ cracks, surveyDays, sections }) => {
                                                 {secCracks.length} cracks
                                             </span>
                                             <span style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '999px', padding: '0.1rem 0.5rem', fontSize: '0.75rem', fontWeight: 600 }}>
-                                                Average Spacing: {avgSpacing} ft
+                                                Avg: {avgSpacing} ft (SD: {stdDev})
                                             </span>
                                         </div>
                                     </div>
