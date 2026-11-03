@@ -1,61 +1,140 @@
 import json
 import os
-from models import ProjectMetadata, Crack, Section, SurveyDay
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-from database import supabase
+from models import ProjectMetadata, Crack, Section, SurveyDay, Project
+from database import db
+from google.cloud import firestore
+from google.cloud.firestore import FieldFilter
+
+def get_db():
+    if db is None:
+        raise RuntimeError(
+            "Firestore client is not initialized. Please configure serviceAccountKey.json in the server folder."
+        )
+    return db
+
+def get_next_id(collection_name: str) -> int:
+    client = get_db()
+    try:
+        docs = client.collection(collection_name).order_by("id", direction=firestore.Query.DESCENDING).limit(1).get()
+        if docs:
+            val = docs[0].to_dict().get("id")
+            if isinstance(val, (int, float)):
+                return int(val) + 1
+            if isinstance(val, str) and val.isdigit():
+                return int(val) + 1
+    except Exception:
+        pass
+
+    # Fallback scanning if index is building or not present
+    all_docs = client.collection(collection_name).get()
+    max_id = 0
+    for doc in all_docs:
+        val = doc.to_dict().get("id")
+        if isinstance(val, (int, float)) and int(val) > max_id:
+            max_id = int(val)
+        elif isinstance(val, str) and val.isdigit() and int(val) > max_id:
+            max_id = int(val)
+    return max_id + 1
+
+def get_next_ids(collection_name: str, count: int) -> List[int]:
+    start = get_next_id(collection_name)
+    return list(range(start, start + count))
+
+def batch_delete_docs(docs):
+    client = get_db()
+    batch = client.batch()
+    count = 0
+    for doc in docs:
+        ref = doc.reference if hasattr(doc, "reference") else doc
+        batch.delete(ref)
+        count += 1
+        if count >= 450:
+            batch.commit()
+            batch = client.batch()
+            count = 0
+    if count > 0:
+        batch.commit()
 
 def load_data(project_id: int) -> ProjectMetadata:
-    meta_res = supabase.table("project_metadata").select("tolerance").eq("project_id", project_id).execute()
-    tolerance = meta_res.data[0]["tolerance"] if meta_res.data else 0.1
-    
-    sec_res = supabase.table("sections").select("*").eq("project_id", project_id).execute()
-    sections = [Section(**s) for s in sec_res.data]
-    
-    day_res = supabase.table("survey_days").select("*").eq("project_id", project_id).execute()
-    survey_days_data = sorted(day_res.data, key=lambda x: x.get("order_index", 0))
-    survey_days = [SurveyDay(**d) for d in survey_days_data]
-    
-    cracks_res = supabase.table("cracks").select("*").eq("project_id", project_id).execute()
-    cracks = [Crack(**c) for c in cracks_res.data]
-    
+    client = get_db()
+    # Tolerance from project_metadata
+    meta_docs = client.collection("project_metadata").where(filter=FieldFilter("project_id", "==", project_id)).limit(1).get()
+    tolerance = 0.1
+    if meta_docs:
+        tolerance = meta_docs[0].to_dict().get("tolerance", 0.1)
+
+    # Sections
+    sec_docs = client.collection("sections").where(filter=FieldFilter("project_id", "==", project_id)).get()
+    sections = [Section(**s.to_dict()) for s in sec_docs]
+    sections.sort(key=lambda s: s.start_station)
+
+    # Survey Days
+    day_docs = client.collection("survey_days").where(filter=FieldFilter("project_id", "==", project_id)).get()
+    day_dicts = [d.to_dict() for d in day_docs]
+    day_dicts.sort(key=lambda x: x.get("order_index", 0))
+    survey_days = [SurveyDay(**d) for d in day_dicts]
+
+    # Cracks
+    crack_docs = client.collection("cracks").where(filter=FieldFilter("project_id", "==", project_id)).get()
+    cracks = [Crack(**c.to_dict()) for c in crack_docs]
+    cracks.sort(key=lambda c: c.distance)
+
     return ProjectMetadata(sections=sections, survey_days=survey_days, cracks=cracks, tolerance=tolerance, project_id=project_id)
 
 def save_data(data: ProjectMetadata):
-    supabase.table("project_metadata").upsert([{"project_id": data.project_id, "tolerance": data.tolerance}], on_conflict="project_id").execute()
+    client = get_db()
+    
+    # --- Project Metadata ---
+    meta_docs = client.collection("project_metadata").where(filter=FieldFilter("project_id", "==", data.project_id)).limit(1).get()
+    if meta_docs:
+        meta_docs[0].reference.set({"project_id": data.project_id, "tolerance": data.tolerance}, merge=True)
+    else:
+        new_meta_id = get_next_id("project_metadata")
+        client.collection("project_metadata").document(str(new_meta_id)).set({
+            "id": new_meta_id,
+            "project_id": data.project_id,
+            "tolerance": data.tolerance
+        })
 
-    # --- Sections: upsert kept ones, delete removed ones ---
+    # --- Sections ---
     kept_section_ids = []
     if data.sections:
-        sec_dicts = []
         for s in data.sections:
             d = json.loads(s.json())
             d["project_id"] = data.project_id
-            # Strip temporary negative IDs so the DB auto-generates a real one
-            if d.get("id") is None or (isinstance(d.get("id"), int) and d["id"] < 0):
-                d.pop("id", None)
-            sec_dicts.append(d)
+            sec_id = d.get("id")
+            if sec_id is None or (isinstance(sec_id, int) and sec_id < 0):
+                sec_id = get_next_id("sections")
+                d["id"] = sec_id
+            client.collection("sections").document(str(sec_id)).set(d)
+            kept_section_ids.append(sec_id)
 
-        print(f"DEBUG: Saving sections: {sec_dicts}")
-        res = supabase.table("sections").upsert(sec_dicts).execute()
-        if res.data:
-            kept_section_ids = [row["id"] for row in res.data]
+    # Delete removed sections for this project
+    existing_secs = client.collection("sections").where(filter=FieldFilter("project_id", "==", data.project_id)).get()
+    for row in existing_secs:
+        s_data = row.to_dict()
+        s_id = s_data.get("id")
+        if s_id not in kept_section_ids:
+            # Orphan associated cracks
+            orphans = client.collection("cracks").where(filter=FieldFilter("section_id", "==", s_id)).where(filter=FieldFilter("project_id", "==", data.project_id)).get()
+            for o in orphans:
+                o.reference.update({"section_id": None})
+            row.reference.delete()
 
-    # Delete sections no longer in the list for this project
-    try:
-        existing_sec_res = supabase.table("sections").select("id").eq("project_id", data.project_id).execute()
-        for row in existing_sec_res.data:
-            if row["id"] not in kept_section_ids:
-                supabase.table("cracks").update({"section_id": None}).eq("section_id", row["id"]).execute()
-                supabase.table("sections").delete().eq("id", row["id"]).execute()
-    except Exception as e:
-        print(f"ERROR deleting sections: {e}")
-
-    # --- Survey Days: upsert ---
+    # --- Survey Days ---
     if data.survey_days:
-        day_dicts = [json.loads(d.json()) for d in data.survey_days]
-        supabase.table("survey_days").upsert(day_dicts).execute()
+        for d in data.survey_days:
+            dd = json.loads(d.json())
+            dd["project_id"] = data.project_id
+            day_id = dd.get("id")
+            if day_id is None or (isinstance(day_id, int) and day_id < 0):
+                day_id = get_next_id("survey_days")
+                dd["id"] = day_id
+            client.collection("survey_days").document(str(day_id)).set(dd)
 
-    # --- Cracks: upsert updated, insert new ---
+    # --- Cracks ---
     cracks_to_insert = []
     cracks_to_update = []
     for c in data.cracks:
@@ -66,138 +145,151 @@ def save_data(data: ProjectMetadata):
         else:
             cracks_to_insert.append(cd)
 
-    if cracks_to_update:
-        supabase.table("cracks").upsert(cracks_to_update).execute()
     if cracks_to_insert:
-        supabase.table("cracks").insert(cracks_to_insert).execute()
+        new_ids = get_next_ids("cracks", len(cracks_to_insert))
+        for i, cd in enumerate(cracks_to_insert):
+            cd["id"] = new_ids[i]
+            cracks_to_update.append(cd)
+
+    batch = client.batch()
+    count = 0
+    for cd in cracks_to_update:
+        ref = client.collection("cracks").document(str(cd["id"]))
+        batch.set(ref, cd)
+        count += 1
+        if count >= 450:
+            batch.commit()
+            batch = client.batch()
+            count = 0
+    if count > 0:
+        batch.commit()
 
 def get_section_for_distance(distance: float, sections: List[Section]) -> Optional[int]:
-    # First pass: normal boundary check (crack at exactly a boundary belongs to the NEXT section)
     for section in sections:
         if section.start_station <= distance < section.end_station:
             return section.id
-    
-    # Second pass fallback: if a crack is EXACTLY at the end station of a section, 
-    # and wasn't caught above (meaning it's the very last point of the project)
     for section in sections:
         if distance == section.end_station:
             return section.id
-            
     return None
+
 def list_projects() -> List[dict]:
-    res = supabase.table("projects").select("*").order("created_at", desc=True).execute()
-    return res.data
+    client = get_db()
+    docs = client.collection("projects").get()
+    projects = [d.to_dict() for d in docs]
+    projects.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return projects
 
 def create_project(name: str) -> dict:
-    print(f"DEBUG: create_project start for name='{name}'")
+    client = get_db()
     try:
-        # 1. Insert the project
-        supabase.table("projects").insert({"name": name}).execute()
-        print(f"DEBUG: Insert finished")
-        
-        # 2. Fetch the ID explicitly
-        res = supabase.table("projects").select("*").eq("name", name).order("created_at", desc=True).limit(1).execute()
-        print(f"DEBUG: Retrieval result data: {res.data}")
-        
-        if not res.data:
-            print(f"DEBUG ERROR: Could not retrieve project '{name}' after insertion.")
-            return {}
-        
-        new_project = res.data[0]
-        print(f"DEBUG: new_project dictionary: {new_project}")
-        
-        p_id = new_project.get("id")
-        print(f"DEBUG: extracted p_id: {p_id}")
-        
-        if p_id is None:
-            print("DEBUG ERROR: p_id is None!")
-            return {}
+        new_id = get_next_id("projects")
+        created_at = datetime.now(timezone.utc).isoformat()
+        project_dict = {
+            "id": new_id,
+            "name": name,
+            "created_at": created_at
+        }
+        client.collection("projects").document(str(new_id)).set(project_dict)
 
-        # 3. Initialize metadata
-        payload = {"project_id": p_id, "tolerance": 0.1}
-        print(f"DEBUG: About to upsert metadata with payload: {payload}")
-        meta_res = supabase.table("project_metadata").upsert(payload).execute()
-        print(f"DEBUG: Metadata upsert finished. Data: {meta_res.data}")
-        
-        return new_project
+        # Initialize metadata
+        meta_id = get_next_id("project_metadata")
+        meta_payload = {
+            "id": meta_id,
+            "project_id": new_id,
+            "tolerance": 0.1
+        }
+        client.collection("project_metadata").document(str(meta_id)).set(meta_payload)
+
+        return project_dict
     except Exception as e:
         print(f"DEBUG EXCEPTION in create_project: {e}")
         return {}
 
 def update_project(project_id: int, name: str) -> dict:
-    print(f"Updating project {project_id} to name: {name}")
-    res = supabase.table("projects").update({"name": name}).eq("id", project_id).execute()
-    print(f"Update result: {res.data}")
-    return res.data[0] if res.data else {}
+    client = get_db()
+    doc_ref = client.collection("projects").document(str(project_id))
+    doc_ref.set({"name": name}, merge=True)
+    snap = doc_ref.get()
+    return snap.to_dict() if snap.exists else {}
 
 def delete_project(project_id: int):
-    print(f"Deleting project: {project_id}")
-    # Cascading deletes (Supabase should handle this if foreign keys are set to CASCADE, 
-    # but we can do it explicitly for safety or if not configured)
-    supabase.table("cracks").delete().eq("project_id", project_id).execute()
-    supabase.table("survey_days").delete().eq("project_id", project_id).execute()
-    supabase.table("sections").delete().eq("project_id", project_id).execute()
-    supabase.table("project_metadata").delete().eq("project_id", project_id).execute()
-    res = supabase.table("projects").delete().eq("id", project_id).execute()
-    print(f"Delete result: {res.data}")
+    client = get_db()
+    # Cascading delete all collections for this project
+    batch_delete_docs(client.collection("cracks").where(filter=FieldFilter("project_id", "==", project_id)).get())
+    batch_delete_docs(client.collection("survey_days").where(filter=FieldFilter("project_id", "==", project_id)).get())
+    batch_delete_docs(client.collection("sections").where(filter=FieldFilter("project_id", "==", project_id)).get())
+    batch_delete_docs(client.collection("project_metadata").where(filter=FieldFilter("project_id", "==", project_id)).get())
+    client.collection("projects").document(str(project_id)).delete()
 
 def duplicate_project(project_id: int) -> dict:
-    # 1. Load original data
-    projects_res = supabase.table("projects").select("*").eq("id", project_id).execute()
-    if not projects_res.data:
+    client = get_db()
+    proj_doc = client.collection("projects").document(str(project_id)).get()
+    if not proj_doc.exists:
         print(f"Error: Project {project_id} not found for duplication")
         return {}
-    
-    original_project = projects_res.data[0]
+
+    orig_proj = proj_doc.to_dict()
     data = load_data(project_id)
-    
-    # 2. Create new project
-    new_name = f"{original_project['name']} (Copy)"
+
+    new_name = f"{orig_proj.get('name', 'Project')} (Copy)"
     new_project = create_project(new_name)
     new_id = new_project["id"]
-    
-    # 3. Copy Metadata
-    supabase.table("project_metadata").upsert([{"project_id": new_id, "tolerance": data.tolerance}]).execute()
-    
-    # 4. Copy Sections
+
+    # Update metadata tolerance
+    meta_docs = client.collection("project_metadata").where(filter=FieldFilter("project_id", "==", new_id)).limit(1).get()
+    if meta_docs:
+        meta_docs[0].reference.update({"tolerance": data.tolerance})
+
+    # Copy sections
     old_to_new_sec = {}
     if data.sections:
         for sec in data.sections:
             old_id = sec.id
             sec_dict = json.loads(sec.json())
-            sec_dict.pop("id", None)
+            new_sec_id = get_next_id("sections")
+            sec_dict["id"] = new_sec_id
             sec_dict["project_id"] = new_id
-            res = supabase.table("sections").insert(sec_dict).execute()
-            if res.data:
-                old_to_new_sec[old_id] = res.data[0]["id"]
+            client.collection("sections").document(str(new_sec_id)).set(sec_dict)
+            old_to_new_sec[old_id] = new_sec_id
 
-    # 5. Copy Survey Days
+    # Copy survey days
     old_to_new_day = {}
     if data.survey_days:
         for day in data.survey_days:
             old_day_id = day.id
             day_dict = json.loads(day.json())
-            day_dict.pop("id", None)
+            new_day_id = get_next_id("survey_days")
+            day_dict["id"] = new_day_id
             day_dict["project_id"] = new_id
-            res = supabase.table("survey_days").insert(day_dict).execute()
-            if res.data:
-                old_to_new_day[old_day_id] = res.data[0]["id"]
-    
-    # 6. Copy Cracks
+            client.collection("survey_days").document(str(new_day_id)).set(day_dict)
+            old_to_new_day[old_day_id] = new_day_id
+
+    # Copy cracks
     if data.cracks:
         crack_dicts = []
-        for crack in data.cracks:
+        new_crack_ids = get_next_ids("cracks", len(data.cracks))
+        for idx, crack in enumerate(data.cracks):
             c_dict = json.loads(crack.json())
-            c_dict.pop("id", None)
+            c_dict["id"] = new_crack_ids[idx]
             c_dict["project_id"] = new_id
             c_dict["section_id"] = old_to_new_sec.get(c_dict["section_id"])
             c_dict["day_id"] = old_to_new_day.get(c_dict["day_id"])
             crack_dicts.append(c_dict)
-        
-        # Batch insert cracks (max 1000 at a time if needed, but here simple)
-        if crack_dicts:
-            supabase.table("cracks").insert(crack_dicts).execute()
-            
+
+        batch = client.batch()
+        count = 0
+        for cd in crack_dicts:
+            ref = client.collection("cracks").document(str(cd["id"]))
+            batch.set(ref, cd)
+            count += 1
+            if count >= 450:
+                batch.commit()
+                batch = client.batch()
+                count = 0
+        if count > 0:
+            batch.commit()
+
     return new_project
 
 def detect_conflicts(new_cracks: List[float], day_id: int, tolerance: float, existing_cracks: List[Crack]) -> List[Dict[str, Any]]:
@@ -227,53 +319,67 @@ def export_project(project_id: int) -> dict:
     return json.loads(data.json())
 
 def import_project(project_id: int, data_dict: dict):
-    # 1. Delete all existing data for this project
-    supabase.table("cracks").delete().eq("project_id", project_id).execute()
-    supabase.table("survey_days").delete().eq("project_id", project_id).execute()
-    supabase.table("sections").delete().eq("project_id", project_id).execute()
-    
-    # 2. Update tolerance
+    client = get_db()
+    # Delete existing data for this project
+    batch_delete_docs(client.collection("cracks").where(filter=FieldFilter("project_id", "==", project_id)).get())
+    batch_delete_docs(client.collection("survey_days").where(filter=FieldFilter("project_id", "==", project_id)).get())
+    batch_delete_docs(client.collection("sections").where(filter=FieldFilter("project_id", "==", project_id)).get())
+
+    # Update tolerance
     tolerance = data_dict.get("tolerance", 0.1)
-    # The row was already created by create_project, so we can just update it
-    supabase.table("project_metadata").update({"tolerance": tolerance}).eq("project_id", project_id).execute()
-    
-    # 3. Import Sections
+    meta_docs = client.collection("project_metadata").where(filter=FieldFilter("project_id", "==", project_id)).limit(1).get()
+    if meta_docs:
+        meta_docs[0].reference.update({"tolerance": tolerance})
+    else:
+        meta_id = get_next_id("project_metadata")
+        client.collection("project_metadata").document(str(meta_id)).set({
+            "id": meta_id,
+            "project_id": project_id,
+            "tolerance": tolerance
+        })
+
+    # Import sections
     old_to_new_sec = {}
     sections = data_dict.get("sections", [])
     for sec in sections:
         old_id = sec.get("id")
         sec_dict = dict(sec)
-        sec_dict.pop("id", None)
+        new_sec_id = get_next_id("sections")
+        sec_dict["id"] = new_sec_id
         sec_dict["project_id"] = project_id
-        res = supabase.table("sections").insert(sec_dict).execute()
-        if res.data:
-            old_to_new_sec[old_id] = res.data[0]["id"]
-            
-    # 4. Import Survey Days
+        client.collection("sections").document(str(new_sec_id)).set(sec_dict)
+        old_to_new_sec[old_id] = new_sec_id
+
+    # Import survey days
     old_to_new_day = {}
     survey_days = data_dict.get("survey_days", [])
     for day in survey_days:
         old_day_id = day.get("id")
         day_dict = dict(day)
-        day_dict.pop("id", None)
+        new_day_id = get_next_id("survey_days")
+        day_dict["id"] = new_day_id
         day_dict["project_id"] = project_id
-        res = supabase.table("survey_days").insert(day_dict).execute()
-        if res.data:
-            old_to_new_day[old_day_id] = res.data[0]["id"]
-            
-    # 5. Import Cracks
+        client.collection("survey_days").document(str(new_day_id)).set(day_dict)
+        old_to_new_day[old_day_id] = new_day_id
+
+    # Import cracks
     cracks = data_dict.get("cracks", [])
-    crack_dicts = []
-    for crack in cracks:
-        c_dict = dict(crack)
-        c_dict.pop("id", None)
-        c_dict["project_id"] = project_id
-        c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
-        c_dict["day_id"] = old_to_new_day.get(c_dict.get("day_id"))
-        crack_dicts.append(c_dict)
-        
-    if crack_dicts:
-        # Split into batches of 1000 to be safe
-        batch_size = 1000
-        for i in range(0, len(crack_dicts), batch_size):
-            supabase.table("cracks").insert(crack_dicts[i:i+batch_size]).execute()
+    if cracks:
+        new_crack_ids = get_next_ids("cracks", len(cracks))
+        batch = client.batch()
+        count = 0
+        for i, crack in enumerate(cracks):
+            c_dict = dict(crack)
+            c_dict["id"] = new_crack_ids[i]
+            c_dict["project_id"] = project_id
+            c_dict["section_id"] = old_to_new_sec.get(c_dict.get("section_id"))
+            c_dict["day_id"] = old_to_new_day.get(c_dict.get("day_id"))
+            ref = client.collection("cracks").document(str(c_dict["id"]))
+            batch.set(ref, c_dict)
+            count += 1
+            if count >= 450:
+                batch.commit()
+                batch = client.batch()
+                count = 0
+        if count > 0:
+            batch.commit()
