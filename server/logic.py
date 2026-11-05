@@ -383,3 +383,53 @@ def import_project(project_id: int, data_dict: dict):
                 count = 0
         if count > 0:
             batch.commit()
+
+SUPER_ADMINS = ['samuel.alalade@ttu.edu', 'alaladesambluez@gmail.com']
+
+def is_user_authorized(email: str) -> bool:
+    if not email:
+        return False
+    clean = email.strip().lower()
+    if clean in [sa.lower() for sa in SUPER_ADMINS]:
+        return True
+    client = get_db()
+    doc = client.collection("authorized_users").document(clean).get()
+    return doc.exists
+
+def list_authorized_users() -> List[dict]:
+    client = get_db()
+    docs = client.collection("authorized_users").get()
+    users = [d.to_dict() for d in docs]
+    for sa in SUPER_ADMINS:
+        if not any(u.get("email", "").lower() == sa.lower() for u in users):
+            users.insert(0, {
+                "id": sa.lower(),
+                "email": sa,
+                "role": "admin",
+                "added_by": "system",
+                "added_at": "Permanent Super Admin"
+            })
+    users.sort(key=lambda x: x.get("email", "").lower())
+    return users
+
+def add_authorized_user(email: str, role: str = "user", added_by: str = "admin") -> dict:
+    clean = email.strip().lower()
+    client = get_db()
+    payload = {
+        "id": clean,
+        "email": clean,
+        "role": role,
+        "added_by": added_by,
+        "added_at": datetime.now(timezone.utc).isoformat()
+    }
+    client.collection("authorized_users").document(clean).set(payload)
+    return payload
+
+def delete_authorized_user(email: str) -> bool:
+    clean = email.strip().lower()
+    if clean in [sa.lower() for sa in SUPER_ADMINS]:
+        raise ValueError("Permanent Super Admins cannot be removed.")
+    client = get_db()
+    client.collection("authorized_users").document(clean).delete()
+    return True
+

@@ -11,12 +11,20 @@ import CrackSpacingChart from './components/CrackSpacingChart';
 import CrackDensityChart from './components/CrackDensityChart';
 import SpacingBoxPlotChart from './components/SpacingBoxPlotChart';
 import DataManagement from './components/DataManagement';
+import Login from './components/Login';
+import AccessDenied from './components/AccessDenied';
+import UserManagement from './components/UserManagement';
 import { useProjectTemperature } from './utils/useProjectTemperature';
+import { auth, onAuthStateChanged, signOut, db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import logo from './assets/logo.png';
 import './index.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
-const TABS = [
+const SUPER_ADMINS = ['samuel.alalade@ttu.edu', 'alaladesambluez@gmail.com'];
+
+const BASE_TABS = [
     { id: 'sections', label: '⚙️ Sections' },
     { id: 'data', label: '📋 Data Entry' },
     { id: 'charts', label: '📊 Dashboard' },
@@ -24,6 +32,14 @@ const TABS = [
 ];
 
 function App() {
+    // Auth state
+    const [currentUser, setCurrentUser] = useState(null);
+    const [authLoading, setAuthLoading] = useState(true);
+    const [isAuthorized, setIsAuthorized] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+    const [showUserManagement, setShowUserManagement] = useState(false);
+
+    // App state
     const [projects, setProjects] = useState([]);
     const [activeProject, setActiveProject] = useState(null);
     const [data, setData] = useState({ sections: [], survey_days: [], cracks: [], tolerance: 0.1 });
@@ -41,15 +57,86 @@ function App() {
         clearTemperature: handleClearTempData
     } = useProjectTemperature(activeProject?.id);
 
+    // Listen to Firebase Auth state
     useEffect(() => {
-        fetchProjects();
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                setCurrentUser(null);
+                setIsAuthorized(false);
+                setIsAdmin(false);
+                setAuthLoading(false);
+                return;
+            }
+
+            const cleanEmail = (user.email || '').toLowerCase().trim();
+            const isSuper = SUPER_ADMINS.some(sa => sa.toLowerCase() === cleanEmail);
+
+            if (isSuper) {
+                setCurrentUser(user);
+                setIsAuthorized(true);
+                setIsAdmin(true);
+                setAuthLoading(false);
+
+                // Silently ensure super admin doc exists in Firestore
+                try {
+                    await setDoc(doc(db, 'authorized_users', cleanEmail), {
+                        id: cleanEmail,
+                        email: cleanEmail,
+                        role: 'admin',
+                        added_by: 'system',
+                        added_at: 'Permanent Super Admin'
+                    }, { merge: true });
+                } catch (e) {
+                    console.warn("Could not sync super admin to Firestore:", e);
+                }
+            } else {
+                try {
+                    const userSnap = await getDoc(doc(db, 'authorized_users', cleanEmail));
+                    if (userSnap.exists()) {
+                        const uData = userSnap.data();
+                        setCurrentUser(user);
+                        setIsAuthorized(true);
+                        setIsAdmin(uData?.role === 'admin');
+                    } else {
+                        setCurrentUser(user);
+                        setIsAuthorized(false);
+                        setIsAdmin(false);
+                    }
+                } catch (err) {
+                    console.error("Error checking authorized_users:", err);
+                    setCurrentUser(user);
+                    setIsAuthorized(false);
+                    setIsAdmin(false);
+                } finally {
+                    setAuthLoading(false);
+                }
+            }
+        });
+
+        return () => unsubscribe();
     }, []);
 
     useEffect(() => {
-        if (activeProject) {
+        if (isAuthorized) {
+            fetchProjects();
+        }
+    }, [isAuthorized]);
+
+    useEffect(() => {
+        if (activeProject && isAuthorized) {
             fetchProjectData(activeProject.id);
         }
-    }, [activeProject]);
+    }, [activeProject, isAuthorized]);
+
+    const handleSignOut = async () => {
+        try {
+            await signOut(auth);
+            setActiveProject(null);
+            setShowUserManagement(false);
+        } catch (err) {
+            console.error("Sign out error:", err);
+        }
+    };
 
     const fetchProjects = async () => {
         setIsLoadingProjects(true);
@@ -80,11 +167,6 @@ function App() {
         setIsLoadingData(true);
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}/data`);
-            if (!res.ok) {
-                console.error(`Failed to fetch project data: HTTP ${res.status}`);
-                setApiError(true);
-                return;
-            }
             const json = await res.json();
             setData(json);
             setApiError(false);
@@ -103,45 +185,45 @@ function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name })
             });
-            const newProject = await res.json();
-            if (!newProject || newProject.id == null) {
-                console.error("Failed to create project: server returned no valid project ID", newProject);
-                alert('Error: Project was not created properly. Please try again.');
-                return;
+            const newProj = await res.json();
+            if (newProj && newProj.id != null) {
+                setProjects(prev => [newProj, ...prev]);
+                setActiveProject(newProj);
+                setApiError(false);
+            } else {
+                console.error("Failed to create project: backend returned empty or invalid response", newProj);
+                setApiError(true);
+                fetchProjects();
             }
-            setProjects([newProject, ...projects]);
-            setActiveProject(newProject);
         } catch (err) {
             console.error("Failed to create project:", err);
+            setApiError(true);
         }
     };
 
-    const handleSaveSections = async (sections) => {
-        if (!activeProject || activeProject.id == null) {
-            console.error("handleSaveSections: activeProject.id is undefined – aborting save.");
-            throw new Error('No active project selected.');
-        }
+    const handleSaveSections = async (newSections) => {
         const res = await fetch(`${API_BASE}/projects/${activeProject.id}/sections`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(sections)
+            body: JSON.stringify(newSections)
         });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.detail || `Server error ${res.status}`);
+        if (res.ok) {
+            fetchProjectData(activeProject.id);
+            setActiveTab('data');
+        } else {
+            console.error("Failed to update sections");
         }
-        fetchProjectData(activeProject.id);
     };
 
-    const handleAddDay = async (newDay) => {
+    const handleAddDay = async (day) => {
         const res = await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...newDay, project_id: activeProject.id })
+            body: JSON.stringify(day)
         });
-        const createdDay = await res.json();
-        fetchProjectData(activeProject.id);
-        return createdDay;
+        if (res.ok) {
+            fetchProjectData(activeProject.id);
+        }
     };
 
     const handleUploadCracks = async (dayId, distances) => {
@@ -150,39 +232,36 @@ function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(distances)
         });
-        const result = await res.json();
-        fetchProjectData(activeProject.id);
-        if (result.status === 'conflict') {
-            setConflicts(result.conflicts);
+        const resData = await res.json();
+        if (resData.status === 'conflict') {
+            setConflicts(resData.conflicts);
         } else {
+            fetchProjectData(activeProject.id);
             setConflicts([]);
         }
-        return result.status;
     };
 
-    const handleResolveConflict = async (index, type) => {
-        const conflict = conflicts[index];
-        const resolutions = [{
-            type,
-            new_distance: conflict.new_distance,
-            existing_id: conflict.existing_crack.id,
-            day_id: conflict.day_id
-        }];
+    const handleResolveConflict = async (resolution) => {
+        const remaining = conflicts.filter(c => c !== resolution.conflict);
+        setConflicts(remaining);
 
         await fetch(`${API_BASE}/projects/${activeProject.id}/resolve-conflicts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(resolutions)
+            body: JSON.stringify([{
+                type: resolution.action,
+                new_distance: resolution.conflict.new_distance,
+                day_id: resolution.conflict.day_id,
+                existing_id: resolution.conflict.existing_crack.id
+            }])
         });
 
-        const newConflicts = [...conflicts];
-        newConflicts.splice(index, 1);
-        setConflicts(newConflicts);
-        if (newConflicts.length === 0) fetchProjectData(activeProject.id);
+        if (remaining.length === 0) {
+            fetchProjectData(activeProject.id);
+        }
     };
 
     const handleDeleteDay = async (dayId) => {
-        if (!window.confirm("Are you sure you want to delete this survey day and all its measurements? This cannot be undone.")) return;
         await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days/${dayId}`, { method: 'DELETE' });
         fetchProjectData(activeProject.id);
     };
@@ -215,64 +294,196 @@ function App() {
         fetchProjectData(activeProject.id);
     };
 
-    const handleReorderDays = async (dayIds) => {
+    const handleReorderDays = async (reorderedDays) => {
+        const dayIds = reorderedDays.map(d => d.id);
         await fetch(`${API_BASE}/projects/${activeProject.id}/survey-days/reorder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dayIds)
         });
-        fetchProjectData(activeProject.id);
+        setData(prev => ({ ...prev, survey_days: reorderedDays }));
     };
 
-    const handleUpdateProject = async (projectId, newName) => {
+    const handleUpdateProject = async (projectId, name) => {
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newName })
+                body: JSON.stringify({ name })
             });
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.detail || 'Failed to update project');
+            const updated = await res.json();
+            setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: updated.name } : p));
+            if (activeProject && activeProject.id === projectId) {
+                setActiveProject(prev => ({ ...prev, name: updated.name }));
             }
-            fetchProjects();
         } catch (err) {
-            console.error("Failed to update project:", err);
-            alert(`Error updating project: ${err.message}`);
+            console.error("Failed to update project name:", err);
+            fetchProjects();
         }
     };
 
     const handleDeleteProject = async (projectId) => {
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}`, { method: 'DELETE' });
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.detail || 'Failed to delete project');
+            if (res.ok) {
+                setProjects(prev => prev.filter(p => p.id !== projectId));
+                if (activeProject && activeProject.id === projectId) {
+                    setActiveProject(null);
+                }
+            } else {
+                console.error("Failed to delete project on backend");
             }
-            fetchProjects();
         } catch (err) {
             console.error("Failed to delete project:", err);
-            alert(`Error deleting project: ${err.message}`);
+            fetchProjects();
         }
     };
 
     const handleDuplicateProject = async (projectId) => {
         try {
             const res = await fetch(`${API_BASE}/projects/${projectId}/duplicate`, { method: 'POST' });
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.detail || 'Failed to duplicate project');
+            const duplicated = await res.json();
+            if (duplicated && duplicated.id) {
+                setProjects(prev => [duplicated, ...prev]);
+                fetchProjects();
             }
-            fetchProjects();
         } catch (err) {
             console.error("Failed to duplicate project:", err);
-            alert(`Error duplicating project: ${err.message}`);
         }
     };
+
+    // 1. Loading credentials
+    if (authLoading) {
+        return (
+            <div style={{
+                minHeight: '100vh',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#0f172a',
+                color: '#ffffff',
+                fontFamily: 'system-ui, -apple-system, sans-serif'
+            }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{
+                        width: '40px',
+                        height: '40px',
+                        border: '3px solid rgba(255,255,255,0.2)',
+                        borderTopColor: '#38bdf8',
+                        borderRadius: '50%',
+                        animation: 'spin 0.7s linear infinite',
+                        margin: '0 auto 1rem auto'
+                    }} />
+                    <div style={{ fontSize: '0.95rem', fontWeight: 500, color: '#94a3b8' }}>
+                        Verifying authorization…
+                    </div>
+                </div>
+                <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+        );
+    }
+
+    // 2. Not logged in
+    if (!currentUser) {
+        return <Login onAuthSuccess={() => {}} />;
+    }
+
+    // 3. Logged in but not on whitelist
+    if (!isAuthorized) {
+        return <AccessDenied userEmail={currentUser.email} onSignOut={handleSignOut} />;
+    }
+
+    // Dynamic tabs (admin gets "User Access" tab)
+    const currentTabs = isAdmin
+        ? [...BASE_TABS, { id: 'users', label: '👥 User Access' }]
+        : BASE_TABS;
+
+    // Top Header Bar
+    const renderTopBar = () => (
+        <div style={{
+            background: '#0f172a',
+            color: '#ffffff',
+            padding: '0.6rem 1.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.85rem',
+            borderBottom: '1px solid #1e293b'
+        }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 600 }}>
+                <img src={logo} alt="Logo" style={{ width: '22px', height: '22px', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                <span>TxDOT 0-7206 Crack Survey</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#cbd5e1' }}>
+                    <span>{currentUser.email}</span>
+                    <span style={{
+                        background: isAdmin ? '#2563eb' : '#475569',
+                        color: '#ffffff',
+                        padding: '0.12rem 0.5rem',
+                        borderRadius: '999px',
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em'
+                    }}>
+                        {isAdmin ? 'Admin' : 'Viewer'}
+                    </span>
+                </div>
+
+                {isAdmin && !activeProject && (
+                    <button
+                        onClick={() => setShowUserManagement(!showUserManagement)}
+                        style={{
+                            background: showUserManagement ? '#334155' : 'transparent',
+                            border: '1px solid #475569',
+                            color: '#ffffff',
+                            borderRadius: '6px',
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                        }}
+                    >
+                        {showUserManagement ? '← Return to Projects' : '👥 Manage Users'}
+                    </button>
+                )}
+
+                <button
+                    onClick={handleSignOut}
+                    style={{
+                        background: 'transparent',
+                        border: '1px solid #475569',
+                        color: '#f87171',
+                        borderRadius: '6px',
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = '#450a0a'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                    Sign Out
+                </button>
+            </div>
+        </div>
+    );
+
+    // If on project selection screen and admin toggled user management
+    if (!activeProject && showUserManagement && isAdmin) {
+        return (
+            <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+                {renderTopBar()}
+                <UserManagement currentUser={currentUser} onBack={() => setShowUserManagement(false)} />
+            </div>
+        );
+    }
 
     if (!activeProject) {
         return (
             <>
+                {renderTopBar()}
                 {apiError && (
                     <div className="api-error-banner" style={{ textAlign: 'center', background: '#fee2e2', color: '#b91c1c', padding: '1rem', fontWeight: 600 }}>
                         ⚠️ Cannot connect to backend (localhost:8000). Please ensure the Python server is running and restarted.
@@ -293,11 +504,15 @@ function App() {
 
     return (
         <div className="app-shell">
+            {renderTopBar()}
             <header className="app-header">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                         <button
-                            onClick={() => setActiveProject(null)}
+                            onClick={() => {
+                                setActiveProject(null);
+                                setShowUserManagement(false);
+                            }}
                             style={{
                                 background: '#f1f5f9', border: 'none', borderRadius: '8px',
                                 padding: '0.5rem 0.75rem', fontSize: '0.875rem', fontWeight: 600,
@@ -319,7 +534,7 @@ function App() {
                 )}
 
                 <nav className="tab-nav">
-                    {TABS.map(tab => (
+                    {currentTabs.map(tab => (
                         <button
                             key={tab.id}
                             className={`tab-btn ${activeTab === tab.id ? 'tab-btn--active' : ''}`}
@@ -465,6 +680,13 @@ function App() {
                             <DataManagement
                                 activeProject={activeProject}
                                 onImportComplete={() => fetchProjectData(activeProject.id)}
+                            />
+                        )}
+
+                        {activeTab === 'users' && isAdmin && (
+                            <UserManagement
+                                currentUser={currentUser}
+                                onBack={() => setActiveTab('sections')}
                             />
                         )}
                     </>

@@ -67,6 +67,38 @@ const CrackPropagationChart = ({
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [isCountSettingsOpen, setIsCountSettingsOpen] = useState(false);
 
+    // Spacing display mode: 'equal' (uniform survey day spacing) or 'actual' (true numerical day spacing)
+    const [spacingMode, setSpacingMode] = useState(() => {
+        try {
+            return localStorage.getItem(`crack_survey_prop_spacing_mode_${projectId || 'default'}`) || 'equal';
+        } catch (e) {
+            return 'equal';
+        }
+    });
+
+    const handleSpacingModeChange = (mode) => {
+        setSpacingMode(mode);
+        try {
+            localStorage.setItem(`crack_survey_prop_spacing_mode_${projectId || 'default'}`, mode);
+        } catch (e) {}
+    };
+
+    // Actual mode tick style: 'surveyDays' (Day 2, Day 3...) or 'numeric' (0, 20, 40...)
+    const [actualTickStyle, setActualTickStyle] = useState(() => {
+        try {
+            return localStorage.getItem(`crack_survey_prop_tick_style_${projectId || 'default'}`) || 'surveyDays';
+        } catch (e) {
+            return 'surveyDays';
+        }
+    });
+
+    const handleUpdateTickStyle = (style) => {
+        setActualTickStyle(style);
+        try {
+            localStorage.setItem(`crack_survey_prop_tick_style_${projectId || 'default'}`, style);
+        } catch (e) {}
+    };
+
     // Primary Y-Axis settings (Cumulative Crack Count)
     const [countAxisSettings, setCountAxisSettings] = useState(() => {
         try {
@@ -118,13 +150,16 @@ const CrackPropagationChart = ({
         }));
     }, [chartSurveyDays, tempBundle?.summary?.startDateTime]);
 
-    // If temp overlay is active, X is mapped to index [0, 1, ..., N-1] with ticktext = day.name
-    // If not, X is plain day.name categorical
+    // In actual mode, X is numeric day numbers [2, 3, 7, 14, 30, ...]
+    // In equal mode, X is index [0, 1, 2, ...] if temp enabled, or categorical day names
     const sectionXValues = useMemo(() => {
+        if (spacingMode === 'actual') {
+            return surveyDayMapping.map(m => m.dayNum);
+        }
         return isTempEnabled
             ? surveyDayMapping.map(m => m.index)
             : chartSurveyDays.map(day => day.name);
-    }, [isTempEnabled, surveyDayMapping, chartSurveyDays]);
+    }, [spacingMode, isTempEnabled, surveyDayMapping, chartSurveyDays]);
 
     const sectionTraces = useMemo(() => {
         const colors = ['#2563eb', '#dc2626', '#16a34a', '#8b5cf6', '#f59e0b', '#0ea5e9', '#db2777', '#14b8a6'];
@@ -146,14 +181,39 @@ const CrackPropagationChart = ({
                 mode: 'lines+markers',
                 name: sec.name,
                 line: { width: 3, color: sec.color || colors[idx % colors.length] },
-                marker: { size: 8 }
+                marker: { size: 8 },
+                connectgaps: true,
+                hovertemplate: spacingMode === 'actual'
+                    ? `<b>${sec.name}</b><br>Cumulative Count: %{y}<br>%{customdata[0]} (Age: %{x} days)<extra></extra>`
+                    : `<b>${sec.name}</b><br>Cumulative Count: %{y}<br>%{customdata[0]}<extra></extra>`,
+                customdata: chartSurveyDays.map(d => [d.name])
             };
         });
-    }, [sections, cracks, surveyDays, chartSurveyDays, sectionXValues]);
+    }, [sections, cracks, surveyDays, chartSurveyDays, sectionXValues, spacingMode]);
 
     // Build Temperature Trace if enabled
     const tempTrace = useMemo(() => {
         if (!isTempEnabled || !tempBundle?.data || tempBundle.data.length === 0) return null;
+
+        const cleanTitle = (settings.yTitle || 'Temperature (°F)').replace(/<[^>]+>/g, '°');
+
+        if (spacingMode === 'actual') {
+            const minDay = surveyDayMapping[0]?.dayNum ?? 0;
+            const maxDay = surveyDayMapping[surveyDayMapping.length - 1]?.dayNum ?? 100;
+            const actualPoints = tempBundle.data.filter(p => p.day >= minDay && p.day <= maxDay);
+
+            return {
+                x: actualPoints.map(p => p.day),
+                y: actualPoints.map(p => p.temp),
+                type: 'scatter',
+                mode: 'lines',
+                name: settings.yTitle || 'Temperature (<sup>o</sup>F)',
+                yaxis: 'y2',
+                line: { width: 1.5, color: settings.color || '#dc2626' },
+                hoverinfo: 'text',
+                text: actualPoints.map(p => `${p.timestamp} (Age: ${p.day.toFixed(2)} days)<br>${cleanTitle}: ${p.temp}°F`)
+            };
+        }
 
         const mappedPoints = tempBundle.data
             .map(p => ({
@@ -164,7 +224,6 @@ const CrackPropagationChart = ({
             }))
             .filter(p => p.x !== null && p.x >= 0 && p.x <= surveyDayMapping.length - 1);
 
-        const cleanTitle = (settings.yTitle || 'Temperature (°F)').replace(/<[^>]+>/g, '°');
         return {
             x: mappedPoints.map(p => p.x),
             y: mappedPoints.map(p => p.y),
@@ -174,9 +233,9 @@ const CrackPropagationChart = ({
             yaxis: 'y2',
             line: { width: 1.5, color: settings.color || '#dc2626' },
             hoverinfo: 'text',
-            text: mappedPoints.map(p => `${p.timestamp} (Day ${p.day.toFixed(2)})<br>${cleanTitle}: ${p.y}°`)
+            text: mappedPoints.map(p => `${p.timestamp} (Day ${p.day.toFixed(2)})<br>${cleanTitle}: ${p.y}°F`)
         };
-    }, [isTempEnabled, tempBundle?.data, settings.yTitle, settings.color, surveyDayMapping]);
+    }, [isTempEnabled, tempBundle?.data, settings.yTitle, settings.color, surveyDayMapping, spacingMode]);
 
     const data = useMemo(() => {
         return tempTrace ? [...sectionTraces, tempTrace] : sectionTraces;
@@ -184,7 +243,7 @@ const CrackPropagationChart = ({
 
     const projectStart = sections && sections.length > 0 ? sections[0].start_station : 0;
     const totalLength = sections && sections.length > 0 ? sections[sections.length - 1].end_station : 1000;
-    const overviewMetadata = `Crack Propagation Rate  |  DMI ${projectStart} - ${totalLength}`;
+    const overviewMetadata = `Crack Propagation Rate (${spacingMode === 'actual' ? 'Actual Spacing' : 'Equal Spacing'})  |  DMI ${projectStart} - ${totalLength}`;
 
     const handleUpdateSettings = (newPartial) => {
         if ('enabled' in newPartial) {
@@ -196,9 +255,57 @@ const CrackPropagationChart = ({
 
     return (
         <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 className="title" style={{ margin: 0 }}>Crack Propagation Rate</h2>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                    <h2 className="title" style={{ margin: 0 }}>Crack Propagation Rate</h2>
+                    {/* Spacing Mode Tabs */}
+                    <div style={{
+                        display: 'inline-flex',
+                        background: '#f1f5f9',
+                        padding: '0.25rem',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        gap: '0.25rem'
+                    }}>
+                        <button
+                            type="button"
+                            onClick={() => handleSpacingModeChange('equal')}
+                            style={{
+                                padding: '0.35rem 0.85rem',
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                background: spacingMode === 'equal' ? '#ffffff' : 'transparent',
+                                color: spacingMode === 'equal' ? '#0f172a' : '#64748b',
+                                boxShadow: spacingMode === 'equal' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                            }}
+                        >
+                            Equal Spacing
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleSpacingModeChange('actual')}
+                            style={{
+                                padding: '0.35rem 0.85rem',
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                background: spacingMode === 'actual' ? '#ffffff' : 'transparent',
+                                color: spacingMode === 'actual' ? '#0f172a' : '#64748b',
+                                boxShadow: spacingMode === 'actual' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                            }}
+                        >
+                            Actual Spacing
+                        </button>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <button
                         onClick={() => handleCopy('crack-propagation-plot', overviewMetadata, 'overview')}
                         title="Copy chart to clipboard"
@@ -319,6 +426,19 @@ const CrackPropagationChart = ({
                             style={{ width: '65px', padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
                         />
                     </div>
+                    {spacingMode === 'actual' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid #cbd5e1', paddingLeft: '1rem' }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>X-Axis Labels:</label>
+                            <select
+                                value={actualTickStyle}
+                                onChange={(e) => handleUpdateTickStyle(e.target.value)}
+                                style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+                            >
+                                <option value="surveyDays">Survey Days (Day 2, Day 3...)</option>
+                                <option value="numeric">Numerical Days (0, 20, 40...)</option>
+                            </select>
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={() => {
@@ -336,7 +456,7 @@ const CrackPropagationChart = ({
                             padding: 0
                         }}
                     >
-                        Reset to Default (0, Auto, Auto Step)
+                        Reset Count Y-Axis
                     </button>
                 </div>
             )}
@@ -358,18 +478,40 @@ const CrackPropagationChart = ({
                 data={data}
                 layout={{
                     autosize: true,
-                    margin: { l: 60, r: isTempEnabled ? 65 : 30, t: 30, b: 70 },
+                    margin: { 
+                        l: 60, 
+                        r: isTempEnabled ? 65 : 30, 
+                        t: 30, 
+                        b: (spacingMode === 'actual' && actualTickStyle === 'surveyDays') ? 85 : 70 
+                    },
                     xaxis: {
-                        title: { text: '<b>Survey Day</b>', font: { size: 16, color: 'black' } },
+                        title: { 
+                            text: spacingMode === 'actual' ? '<b>Age (Days)</b>' : '<b>Age (Survey Days)</b>', 
+                            font: { size: 16, color: 'black' } 
+                        },
                         tickfont: { size: 14, color: 'black' },
                         showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
                         zeroline: false,
-                        ...(isTempEnabled ? {
+                        ...(spacingMode === 'actual' ? {
+                            ...(actualTickStyle === 'surveyDays' ? {
+                                tickmode: 'array',
+                                tickvals: surveyDayMapping.map(m => m.dayNum),
+                                ticktext: surveyDayMapping.map(m => m.name),
+                                tickangle: -45
+                            } : {
+                                tickmode: 'auto',
+                                tickangle: 0
+                            }),
+                            range: [
+                                Math.max(0, (surveyDayMapping[0]?.dayNum ?? 0) - 2),
+                                Math.ceil((surveyDayMapping[surveyDayMapping.length - 1]?.dayNum ?? 100) + Math.max(2, ((surveyDayMapping[surveyDayMapping.length - 1]?.dayNum ?? 100) - (surveyDayMapping[0]?.dayNum ?? 0)) * 0.03))
+                            ]
+                        } : (isTempEnabled ? {
                             tickmode: 'array',
                             tickvals: surveyDayMapping.map(m => m.index),
                             ticktext: surveyDayMapping.map(m => m.name),
                             range: [-0.5, surveyDayMapping.length - 0.5]
-                        } : {})
+                        } : {}))
                     },
                     yaxis: {
                         title: { text: '<b>Cumulative Crack Count</b>', font: { size: 16, color: 'black' } },

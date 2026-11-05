@@ -291,6 +291,22 @@ def import_project(project_id: int, data: dict = Body(...)):
     logic.import_project(project_id, data)
     return {"status": "success"}
 
+@app.get("/users")
+def get_users():
+    return logic.list_authorized_users()
+
+@app.post("/users")
+def add_user(email: str = Body(...), role: str = Body("user"), added_by: str = Body("admin")):
+    return logic.add_authorized_user(email, role, added_by)
+
+@app.delete("/users/{email}")
+def delete_user(email: str):
+    try:
+        logic.delete_authorized_user(email)
+        return {"status": "deleted"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
