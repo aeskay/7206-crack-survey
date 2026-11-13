@@ -17,7 +17,7 @@ const handleExport = (divId, metadata, name, action) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const topPadding = 60;
+        const topPadding = 36;
         canvas.width = img.width;
         canvas.height = img.height + topPadding;
         const ctx = canvas.getContext('2d');
@@ -26,9 +26,9 @@ const handleExport = (divId, metadata, name, action) => {
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, topPadding);
 
-        ctx.font = 'bold 22px sans-serif';
+        ctx.font = 'bold 20px sans-serif';
         ctx.fillStyle = '#1e293b';
-        ctx.fillText(metadata, 140, 40);
+        ctx.fillText(metadata, 60, 24);
 
         if (action === 'download') {
           const link = document.createElement('a');
@@ -434,8 +434,8 @@ const CrackPropagationChart = ({
                                 onChange={(e) => handleUpdateTickStyle(e.target.value)}
                                 style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
                             >
-                                <option value="surveyDays">Survey Days (Day 2, Day 3...)</option>
-                                <option value="numeric">Numerical Days (0, 20, 40...)</option>
+                                <option value="surveyDays">Survey Days (2, 3, 7...)</option>
+                                <option value="numeric">Numerical Steps (0, 20, 40...)</option>
                             </select>
                         </div>
                     )}
@@ -481,13 +481,14 @@ const CrackPropagationChart = ({
                     margin: { 
                         l: 60, 
                         r: isTempEnabled ? 65 : 30, 
-                        t: 30, 
-                        b: (spacingMode === 'actual' && actualTickStyle === 'surveyDays') ? 85 : 70 
+                        t: 12, 
+                        b: 80 
                     },
                     xaxis: {
                         title: { 
-                            text: spacingMode === 'actual' ? '<b>Age (Days)</b>' : '<b>Age (Survey Days)</b>', 
-                            font: { size: 16, color: 'black' } 
+                            text: '<b>Age (Days)</b>', 
+                            font: { size: 16, color: 'black' },
+                            standoff: 8
                         },
                         tickfont: { size: 14, color: 'black' },
                         showline: true, linewidth: 1, linecolor: 'black', mirror: true, ticks: 'inside',
@@ -496,8 +497,8 @@ const CrackPropagationChart = ({
                             ...(actualTickStyle === 'surveyDays' ? {
                                 tickmode: 'array',
                                 tickvals: surveyDayMapping.map(m => m.dayNum),
-                                ticktext: surveyDayMapping.map(m => m.name),
-                                tickangle: -45
+                                ticktext: surveyDayMapping.map(m => String(m.dayNum)),
+                                tickangle: 0
                             } : {
                                 tickmode: 'auto',
                                 tickangle: 0
@@ -509,9 +510,15 @@ const CrackPropagationChart = ({
                         } : (isTempEnabled ? {
                             tickmode: 'array',
                             tickvals: surveyDayMapping.map(m => m.index),
-                            ticktext: surveyDayMapping.map(m => m.name),
+                            ticktext: surveyDayMapping.map(m => String(m.dayNum)),
+                            tickangle: 0,
                             range: [-0.5, surveyDayMapping.length - 0.5]
-                        } : {}))
+                        } : {
+                            tickmode: 'array',
+                            tickvals: chartSurveyDays.map(day => day.name),
+                            ticktext: surveyDayMapping.map(m => String(m.dayNum)),
+                            tickangle: 0
+                        }))
                     },
                     yaxis: {
                         title: { text: '<b>Cumulative Crack Count</b>', font: { size: 16, color: 'black' } },
@@ -554,10 +561,11 @@ const CrackPropagationChart = ({
                     } : {}),
                     legend: {
                         orientation: 'h',
-                        y: -0.25,
+                        y: -0.26,
+                        yanchor: 'top',
                         x: 0.5,
                         xanchor: 'center',
-                        font: { color: 'black', size: 14 },
+                        font: { color: 'black', size: 13 },
                         bordercolor: 'black',
                         borderwidth: 1
                     }

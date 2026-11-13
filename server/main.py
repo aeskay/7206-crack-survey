@@ -63,6 +63,21 @@ def delete_project(project_id: int):
 def duplicate_project(project_id: int):
     return logic.duplicate_project(project_id)
 
+@app.get("/projects/{project_id}/temperature")
+def get_temperature(project_id: int):
+    temp = logic.get_project_temperature(project_id)
+    return {"temperature": temp}
+
+@app.post("/projects/{project_id}/temperature")
+def save_temperature(project_id: int, bundle: dict = Body(...)):
+    saved = logic.save_project_temperature(project_id, bundle)
+    return {"status": "success", "temperature": saved}
+
+@app.delete("/projects/{project_id}/temperature")
+def delete_temperature(project_id: int):
+    logic.delete_project_temperature(project_id)
+    return {"status": "success"}
+
 @app.get("/projects/{project_id}/data", response_model=ProjectMetadata)
 def get_data(project_id: int):
     return logic.load_data(project_id)

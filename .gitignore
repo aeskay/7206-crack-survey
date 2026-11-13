@@ -13,3 +13,4 @@ __pycache__/
 .ipynb_checkpoints/
 serviceAccountKey.json
 *firebase-adminsdk*.json
+firebase-debug.log*

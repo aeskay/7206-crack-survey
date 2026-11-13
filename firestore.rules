@@ -1,0 +1,330 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model & Architecture
+// ===============================================================
+//
+// Collection: authorized_users
+// Document ID: {userEmail} (lowercase email address, e.g. "samuel.alalade@ttu.edu")
+// Fields:
+//   - email: string (required, 3-100 chars, valid email format, matches doc ID)
+//   - role: string (required, enum ['admin', 'user'])
+//   - added_by: string (required, 1-100 chars, e.g. "system" or admin email)
+//   - added_at: string (required, 1-50 chars, ISO timestamp or descriptor string)
+//   - id: string (optional, 1-100 chars, user email identifier)
+//
+// Collection: projects
+// Document ID: {projectId} (numeric ID as string, e.g. "1")
+// Fields:
+//   - id: number (required)
+//   - name: string (required, 1-200 chars)
+//   - created_at: string (optional, 1-50 chars)
+//
+// Collection: project_metadata
+// Document ID: {metaId} (numeric ID as string)
+// Fields:
+//   - id: number (required)
+//   - project_id: number (required)
+//   - tolerance: number (required, > 0)
+//
+// Collection: sections
+// Document ID: {sectionId} (numeric ID as string)
+// Fields:
+//   - id: number (required)
+//   - name: string (required, 1-100 chars)
+//   - start_station: number (required, >= 0)
+//   - end_station: number (required, >= 0)
+//   - steel_ratio: number (required, >= 0)
+//   - project_id: number (required)
+//   - color: string (optional, 1-20 chars)
+//
+// Collection: survey_days
+// Document ID: {dayId} (numeric ID as string)
+// Fields:
+//   - id: number (required)
+//   - name: string (required, 1-100 chars)
+//   - date: string (required, 1-50 chars)
+//   - color: string (required, 1-20 chars)
+//   - order_index: number (required, >= 0)
+//   - project_id: number (required)
+//
+// Collection: cracks
+// Document ID: {crackId} (numeric ID as string)
+// Fields:
+//   - id: number (required)
+//   - distance: number (required, >= 0)
+//   - day_id: number (required)
+//   - section_id: number (optional)
+//   - project_id: number (required)
+//
+// Collection: project_temperatures
+// Document ID: {projectId} (numeric ID as string, e.g. "1")
+// Fields:
+//   - projectId: number (required)
+//   - fileName: string (required, 1-200 chars)
+//   - data: list (required)
+//   - summary: map (required)
+//   - meta: map (optional)
+//   - settings: map (optional)
+//   - sheetName: string or null (optional, 1-200 chars if string)
+//   - updatedAt: string (optional, 1-50 chars)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===========================================================
+    // Core Helper Functions
+    // ===========================================================
+
+    // Check if the user is authenticated via Firebase Auth
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user is a designated permanent Super Admin
+    function isSuperAdmin() {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        (request.auth.token.email == 'samuel.alalade@ttu.edu' ||
+         request.auth.token.email == 'alaladesambluez@gmail.com' ||
+         request.auth.token.email.matches('(?i)^(samuel\\.alalade@ttu\\.edu|alaladesambluez@gmail\\.com)$'));
+    }
+
+    // Check if the target email is a protected Super Admin email
+    function isTargetSuperAdmin(userEmail) {
+      return userEmail == 'samuel.alalade@ttu.edu' ||
+             userEmail == 'alaladesambluez@gmail.com' ||
+             userEmail.matches('(?i)^(samuel\\.alalade@ttu\\.edu|alaladesambluez@gmail\\.com)$');
+    }
+
+    // Check if authenticated caller's email matches the document ID
+    function isSelf(userEmail) {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        (request.auth.token.email == userEmail ||
+         request.auth.token.email.matches('(?i)^' + userEmail + '$'));
+    }
+
+    // Check if authenticated user is whitelisted in authorized_users
+    function isAuthorizedUser() {
+      return isSuperAdmin() ||
+        (isAuthenticated() &&
+         request.auth.token.email != null &&
+         exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)));
+    }
+
+    // Check if user has admin privileges (Super Admin or role == 'admin')
+    function isAdmin() {
+      return isSuperAdmin() ||
+        (isAuthenticated() &&
+         request.auth.token.email != null &&
+         exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)) &&
+         get(/databases/$(database)/documents/authorized_users/$(request.auth.token.email)).data.role == 'admin');
+    }
+
+    // Email format validation
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // ===========================================================
+    // Domain Validators (Applied to both create and update)
+    // ===========================================================
+
+    function isValidAuthorizedUser(data, userEmail) {
+      return data.keys().hasAll(['email', 'role', 'added_by', 'added_at']) &&
+             data.keys().hasOnly(['email', 'role', 'added_by', 'added_at', 'id']) &&
+             data.email is string &&
+             data.email.size() >= 3 &&
+             data.email.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.email == userEmail &&
+             data.role is string &&
+             data.role in ['admin', 'user'] &&
+             data.added_by is string &&
+             data.added_by.size() > 0 &&
+             data.added_by.size() <= 100 &&
+             data.added_at is string &&
+             data.added_at.size() > 0 &&
+             data.added_at.size() <= 50 &&
+             (!('id' in data) || (data.id is string && data.id.size() <= 100));
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['id', 'name']) &&
+             data.keys().hasOnly(['id', 'name', 'created_at']) &&
+             data.id is number &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.name.size() <= 200 &&
+             (!('created_at' in data) || (data.created_at is string && data.created_at.size() <= 50));
+    }
+
+    function isValidProjectMetadata(data) {
+      return data.keys().hasAll(['id', 'project_id', 'tolerance']) &&
+             data.keys().hasOnly(['id', 'project_id', 'tolerance']) &&
+             data.id is number &&
+             data.project_id is number &&
+             data.tolerance is number &&
+             data.tolerance > 0;
+    }
+
+    function isValidSection(data) {
+      return data.keys().hasAll(['id', 'name', 'start_station', 'end_station', 'steel_ratio', 'project_id']) &&
+             data.keys().hasOnly(['id', 'name', 'start_station', 'end_station', 'steel_ratio', 'project_id', 'color']) &&
+             data.id is number &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.name.size() <= 100 &&
+             data.start_station is number &&
+             data.start_station >= 0 &&
+             data.end_station is number &&
+             data.end_station >= 0 &&
+             data.steel_ratio is number &&
+             data.steel_ratio >= 0 &&
+             data.project_id is number &&
+             (!('color' in data) || (data.color is string && data.color.size() <= 20));
+    }
+
+    function isValidSurveyDay(data) {
+      return data.keys().hasAll(['id', 'name', 'date', 'color', 'order_index', 'project_id']) &&
+             data.keys().hasOnly(['id', 'name', 'date', 'color', 'order_index', 'project_id']) &&
+             data.id is number &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.name.size() <= 100 &&
+             data.date is string &&
+             data.date.size() <= 50 &&
+             data.color is string &&
+             data.color.size() <= 20 &&
+             data.order_index is number &&
+             data.order_index >= 0 &&
+             data.project_id is number;
+    }
+
+    function isValidCrack(data) {
+      return data.keys().hasAll(['id', 'distance', 'day_id', 'project_id']) &&
+             data.keys().hasOnly(['id', 'distance', 'day_id', 'section_id', 'project_id']) &&
+             data.id is number &&
+             data.distance is number &&
+             data.distance >= 0 &&
+             data.day_id is number &&
+             data.project_id is number &&
+             (!('section_id' in data) || data.section_id == null || data.section_id is number);
+    }
+
+    function isValidProjectTemperature(data) {
+      return data.keys().hasAll(['projectId', 'fileName', 'data', 'summary']) &&
+             data.keys().hasOnly(['projectId', 'fileName', 'data', 'summary', 'meta', 'settings', 'sheetName', 'updatedAt']) &&
+             data.projectId is number &&
+             data.fileName is string &&
+             data.fileName.size() > 0 &&
+             data.fileName.size() <= 200 &&
+             data.data is list &&
+             data.summary is map &&
+             (!('meta' in data) || data.meta is map) &&
+             (!('settings' in data) || data.settings is map) &&
+             (!('sheetName' in data) || data.sheetName == null || (data.sheetName is string && data.sheetName.size() <= 200)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    // ===========================================================
+    // Collection Rules
+    // ===========================================================
+
+    // -----------------------------------------------------------
+    // authorized_users
+    // -----------------------------------------------------------
+    match /authorized_users/{userEmail} {
+      // Any authenticated user can get their own auth status document
+      // (used in App.jsx upon login). Authorized users / admins can also get any user doc.
+      allow get: if isAuthenticated() &&
+                    (isSelf(userEmail) || isAuthorizedUser());
+
+      // Listing all users in UserManagement modal is permitted for authorized users.
+      // Unauthenticated or non-whitelisted users are rejected.
+      allow list: if isAuthorizedUser();
+
+      // Creating a new authorized user requires admin privileges.
+      // Super Admin accounts can only be created/bootstrapped by Super Admins.
+      allow create: if isAdmin() &&
+                       (!isTargetSuperAdmin(userEmail) || isSuperAdmin()) &&
+                       isValidAuthorizedUser(request.resource.data, userEmail);
+
+      // Updating an authorized user requires admin privileges.
+      // Super Admin accounts cannot be demoted or altered by regular admins.
+      // Document email cannot be changed on update.
+      allow update: if isAdmin() &&
+                       (!isTargetSuperAdmin(userEmail) || isSuperAdmin()) &&
+                       isValidAuthorizedUser(request.resource.data, userEmail) &&
+                       request.resource.data.email == resource.data.email;
+
+      // Deleting a user requires admin privileges.
+      // Permanent Super Admins cannot be deleted.
+      allow delete: if isAdmin() && !isTargetSuperAdmin(userEmail);
+    }
+
+    // -----------------------------------------------------------
+    // Crack Survey Data Collections
+    // (Read accessible to authorized users; writes protected by schema validation)
+    // -----------------------------------------------------------
+
+    match /projects/{projectId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() && isValidProject(request.resource.data);
+      allow update: if isAuthorizedUser() && isValidProject(request.resource.data) &&
+                       request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin();
+    }
+
+    match /project_metadata/{metaId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() && isValidProjectMetadata(request.resource.data);
+      allow update: if isAuthorizedUser() && isValidProjectMetadata(request.resource.data) &&
+                       request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin();
+    }
+
+    match /sections/{sectionId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() && isValidSection(request.resource.data);
+      allow update: if isAuthorizedUser() && isValidSection(request.resource.data) &&
+                       request.resource.data.id == resource.data.id;
+      allow delete: if isAuthorizedUser();
+    }
+
+    match /survey_days/{dayId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() && isValidSurveyDay(request.resource.data);
+      allow update: if isAuthorizedUser() && isValidSurveyDay(request.resource.data) &&
+                       request.resource.data.id == resource.data.id;
+      allow delete: if isAuthorizedUser();
+    }
+
+    match /cracks/{crackId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() && isValidCrack(request.resource.data);
+      allow update: if isAuthorizedUser() && isValidCrack(request.resource.data) &&
+                       request.resource.data.id == resource.data.id;
+      allow delete: if isAuthorizedUser();
+    }
+
+    match /project_temperatures/{projectId} {
+      allow read: if isAuthorizedUser();
+      allow create: if isAuthorizedUser() && isValidProjectTemperature(request.resource.data);
+      allow update: if isAuthorizedUser() && isValidProjectTemperature(request.resource.data) &&
+                       request.resource.data.projectId == resource.data.projectId;
+      allow delete: if isAuthorizedUser();
+    }
+
+    // ===========================================================
+    // Default Deny Root Fallback
+    // ===========================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

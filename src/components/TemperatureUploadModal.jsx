@@ -30,6 +30,7 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
     const [columns, setColumns] = useState([]);
     const [timeColIdx, setTimeColIdx] = useState(0);
     const [tempColIdx, setTempColIdx] = useState(1);
+    const [tempUnit, setTempUnit] = useState('F'); // 'F' or 'C'
     const [candidateStartTimes, setCandidateStartTimes] = useState([]);
     const [startDateTime, setStartDateTime] = useState('');
     const [intervalMinutes, setIntervalMinutes] = useState(60);
@@ -50,6 +51,7 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
         setColumns(structure.columns);
         setTimeColIdx(structure.detectedTimeCol);
         setTempColIdx(structure.detectedTempCol);
+        setTempUnit(structure.detectedTempUnit || 'F');
         setCandidateStartTimes(structure.candidateStartTimes);
         setIsTOA5(structure.isTOA5);
         setFirstDataRowIdx(structure.firstDataRowIdx);
@@ -155,6 +157,15 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
 
     const handleTempColChange = (newCol) => {
         setTempColIdx(newCol);
+        const col = columns[newCol];
+        if (col) {
+            const text = `${col.userLabel} ${col.fieldName} ${col.unit} ${col.excelName} ${col.title}`.toLowerCase();
+            if (text.includes('temp_c') || text.includes('deg c') || text.includes('deg_c') || text.includes('°c') || text.includes('celsius') || (col.unit && col.unit.toLowerCase().trim() === 'c')) {
+                setTempUnit('C');
+            } else if (text.includes('temp_f') || text.includes('deg f') || text.includes('deg_f') || text.includes('°f') || text.includes('fahrenheit') || (col.unit && col.unit.toLowerCase().trim() === 'f')) {
+                setTempUnit('F');
+            }
+        }
     };
 
     const handleProcessAndSave = async () => {
@@ -176,6 +187,7 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
                 firstDataRowIdx,
                 timeColIdx,
                 tempColIdx,
+                tempUnit,
                 startDateTimeStr: startDateTime,
                 intervalMinutes: Number(intervalMinutes)
             });
@@ -184,13 +196,14 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
                 throw new Error("No data points generated. Please verify the Start Date/Time and selected columns.");
             }
 
-            // ONLY SAVE the downsampled points + metadata to browser storage (IndexedDB)
+            // Save downsampled points + metadata to Firestore & local cache
             await onSave({
                 fileName: fileName,
                 sheetName: isExcel ? selectedSheet : null,
                 data: points, // strictly [{ timestamp, day, temp }, ...]
                 summary: {
                     ...summary,
+                    tempUnit,
                     sheetName: isExcel ? selectedSheet : null
                 },
                 meta: {
@@ -198,6 +211,8 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
                     sheetName: isExcel ? selectedSheet : null,
                     timeColName: columns[timeColIdx]?.title || `Column ${timeColIdx + 1}`,
                     tempColName: columns[tempColIdx]?.title || `Column ${tempColIdx + 1}`,
+                    sourceUnit: tempUnit,
+                    convertedToFahrenheit: tempUnit === 'C',
                     startDateTime,
                     intervalMinutes: Number(intervalMinutes)
                 }
@@ -275,7 +290,7 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
                             🌡️ Import & Parse Temperature Data
                         </h2>
                         <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-                            Only selected downsampled columns are saved locally in browser storage (IndexedDB)
+                            Processed temperature series is saved directly to Firestore for your project
                         </p>
                     </div>
                     <button
@@ -536,6 +551,69 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
                                             </option>
                                         ))}
                                     </select>
+                                </div>
+                            </div>
+
+                            {/* Temperature Unit (F vs C) Selection */}
+                            <div style={{
+                                background: tempUnit === 'C' ? '#fffbeb' : '#f8fafc',
+                                border: tempUnit === 'C' ? '1px solid #fde68a' : '1px solid #e2e8f0',
+                                borderRadius: '10px',
+                                padding: '0.85rem 1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '1rem',
+                                flexWrap: 'wrap',
+                                transition: 'all 0.2s'
+                            }}>
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 700, color: '#1e293b' }}>
+                                        🌡️ Temperature Unit:
+                                    </label>
+                                    <span style={{ fontSize: '0.78rem', color: tempUnit === 'C' ? '#b45309' : '#64748b' }}>
+                                        {tempUnit === 'C'
+                                            ? '⚠️ Celsius (°C) selected: each value will be automatically converted to Fahrenheit (°F = °C × 9/5 + 32) before plotting.'
+                                            : '✓ Fahrenheit (°F) selected: values are imported as-is without conversion.'}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'inline-flex', background: '#e2e8f0', padding: '3px', borderRadius: '8px', gap: '3px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTempUnit('F')}
+                                        style={{
+                                            padding: '0.35rem 0.85rem',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: tempUnit === 'F' ? '#ffffff' : 'transparent',
+                                            color: tempUnit === 'F' ? '#1d4ed8' : '#475569',
+                                            fontWeight: 700,
+                                            fontSize: '0.82rem',
+                                            cursor: 'pointer',
+                                            boxShadow: tempUnit === 'F' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        °F (Fahrenheit)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTempUnit('C')}
+                                        style={{
+                                            padding: '0.35rem 0.85rem',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: tempUnit === 'C' ? '#ffffff' : 'transparent',
+                                            color: tempUnit === 'C' ? '#b45309' : '#475569',
+                                            fontWeight: 700,
+                                            fontSize: '0.82rem',
+                                            cursor: 'pointer',
+                                            boxShadow: tempUnit === 'C' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                            transition: 'all 0.15s ease'
+                                        }}
+                                    >
+                                        °C (Celsius → Convert to °F)
+                                    </button>
                                 </div>
                             </div>
 

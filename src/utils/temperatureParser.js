@@ -140,7 +140,7 @@ export function inspectTableStructure(rawRows, options = {}) {
             columns: [],
             detectedTimeCol: 0,
             detectedTempCol: 0,
-            detectedConvertCtoF: false,
+            detectedTempUnit: 'F',
             candidateStartTimes: [],
             isTOA5: false,
             firstDataRowIdx: 0,
@@ -335,6 +335,12 @@ export function inspectTableStructure(rawRows, options = {}) {
         detectedTempCol = columns.length > 1 ? 1 : 0;
     }
 
+    // Detect if the chosen temperature column appears to be Celsius (°C)
+    const chosenCol = columns[detectedTempCol];
+    const colText = chosenCol ? `${chosenCol.userLabel} ${chosenCol.fieldName} ${chosenCol.unit} ${chosenCol.excelName} ${chosenCol.title}`.toLowerCase() : '';
+    const isCelsius = colText.includes('temp_c') || colText.includes('deg c') || colText.includes('deg_c') || colText.includes('°c') || colText.includes('celsius') || (chosenCol?.unit && chosenCol.unit.toLowerCase().trim() === 'c');
+    const detectedTempUnit = isCelsius ? 'C' : 'F';
+
     // 8. Candidate start times from firstDataRowIdx onward
     const candidateStartTimes = [];
     for (let r = firstDataRowIdx; r < Math.min(rawRows.length, firstDataRowIdx + 50); r++) {
@@ -354,6 +360,7 @@ export function inspectTableStructure(rawRows, options = {}) {
         columns,
         detectedTimeCol,
         detectedTempCol,
+        detectedTempUnit,
         candidateStartTimes: candidateStartTimes.slice(0, 20),
         isTOA5,
         firstDataRowIdx,
@@ -363,7 +370,7 @@ export function inspectTableStructure(rawRows, options = {}) {
 
 /**
  * Process and downsample raw rows starting from chosen start point.
- * Temperature values are treated directly as Fahrenheit (°F).
+ * Converts Celsius to Fahrenheit if tempUnit is 'C'.
  *
  * @param {Object} options
  * @param {any[][]} options.rawRows
@@ -371,6 +378,7 @@ export function inspectTableStructure(rawRows, options = {}) {
  * @param {number} [options.firstDataRowIdx]
  * @param {number} [options.timeColIdx=0]
  * @param {number} [options.tempColIdx=1]
+ * @param {string} [options.tempUnit='F'] - 'F' or 'C'
  * @param {string} options.startDateTimeStr - The selected start timestamp ("Day 0")
  * @param {number} [options.intervalMinutes=60] - e.g. 60 or 30 or 15 or 5
  * @returns {{ points: Array<{ timestamp: string, day: number, temp: number }>, summary: Object }}
@@ -381,6 +389,7 @@ export function processTemperatureSeries({
     firstDataRowIdx,
     timeColIdx = 0,
     tempColIdx = 1,
+    tempUnit = 'F',
     startDateTimeStr,
     intervalMinutes = 60
 }) {
@@ -414,9 +423,12 @@ export function processTemperatureSeries({
         const rawNum = typeof tempVal === 'number' ? tempVal : parseFloat(String(tempVal).replace(/[^\d.-]/g, ''));
         if (isNaN(rawNum)) continue;
 
+        const isC = tempUnit === 'C' || tempUnit === 'celsius';
+        const tempF = isC ? (rawNum * 9 / 5) + 32 : rawNum;
+
         // Keep records from startMs onward (with 1-min tolerance)
         if (timeMs >= startMs - 60000) {
-            validRecords.push({ ms: timeMs, temp: rawNum });
+            validRecords.push({ ms: timeMs, temp: tempF });
         }
     }
 
@@ -469,6 +481,8 @@ export function processTemperatureSeries({
             startDateTime: formatDateTime(startMs),
             endDateTime: points.length > 0 ? points[points.length - 1].timestamp : '',
             intervalMinutes,
+            tempUnit: (tempUnit === 'C' || tempUnit === 'celsius') ? 'C' : 'F',
+            convertedToFahrenheit: tempUnit === 'C' || tempUnit === 'celsius',
             minTemp,
             maxTemp,
             dayCount: points.length > 0 ? points[points.length - 1].day : 0
