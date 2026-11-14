@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const PRESET_COLORS = [
     { label: 'Red', hex: '#dc2626' },
@@ -19,11 +19,51 @@ const TemperatureControlPanel = ({
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
+    // Maintain local state for text/numeric inputs so typing is 100% instant and responsive without network lag
+    const [localValues, setLocalValues] = useState({
+        min: settings?.min ?? '',
+        max: settings?.max ?? '',
+        dtick: settings?.dtick ?? '',
+        yTitle: settings?.yTitle ?? 'Temperature (<sup>o</sup>F)'
+    });
+
+    const debounceTimerRef = useRef(null);
+
+    // Sync from props whenever external settings change
+    useEffect(() => {
+        setLocalValues({
+            min: settings?.min ?? '',
+            max: settings?.max ?? '',
+            dtick: settings?.dtick ?? '',
+            yTitle: settings?.yTitle ?? 'Temperature (<sup>o</sup>F)'
+        });
+    }, [settings?.min, settings?.max, settings?.dtick, settings?.yTitle]);
+
     const hasData = Boolean(tempBundle?.data && tempBundle.data.length > 0);
     const isEnabled = Boolean(settings?.enabled && hasData);
 
     const handleSettingChange = (field, value) => {
         onUpdateSettings({ [field]: value });
+    };
+
+    const handleFieldChange = (field, value) => {
+        // Immediate local state update for zero typing lag
+        setLocalValues(prev => ({ ...prev, [field]: value }));
+
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+        }
+        debounceTimerRef.current = setTimeout(() => {
+            onUpdateSettings({ [field]: value });
+        }, 300);
+    };
+
+    const handleFieldBlur = (field) => {
+        if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+        }
+        onUpdateSettings({ [field]: localValues[field] });
     };
 
     return (
@@ -176,8 +216,9 @@ const TemperatureControlPanel = ({
                             <input
                                 type="number"
                                 placeholder="Auto"
-                                value={settings?.min ?? ''}
-                                onChange={(e) => handleSettingChange('min', e.target.value)}
+                                value={localValues.min}
+                                onChange={(e) => handleFieldChange('min', e.target.value)}
+                                onBlur={() => handleFieldBlur('min')}
                                 style={{
                                     width: '100%',
                                     padding: '0.4rem 0.6rem',
@@ -196,8 +237,9 @@ const TemperatureControlPanel = ({
                             <input
                                 type="number"
                                 placeholder="Auto"
-                                value={settings?.max ?? ''}
-                                onChange={(e) => handleSettingChange('max', e.target.value)}
+                                value={localValues.max}
+                                onChange={(e) => handleFieldChange('max', e.target.value)}
+                                onBlur={() => handleFieldBlur('max')}
                                 style={{
                                     width: '100%',
                                     padding: '0.4rem 0.6rem',
@@ -216,8 +258,9 @@ const TemperatureControlPanel = ({
                             <input
                                 type="number"
                                 placeholder="Auto"
-                                value={settings?.dtick ?? ''}
-                                onChange={(e) => handleSettingChange('dtick', e.target.value)}
+                                value={localValues.dtick}
+                                onChange={(e) => handleFieldChange('dtick', e.target.value)}
+                                onBlur={() => handleFieldBlur('dtick')}
                                 style={{
                                     width: '100%',
                                     padding: '0.4rem 0.6rem',
@@ -236,8 +279,9 @@ const TemperatureControlPanel = ({
                             <input
                                 type="text"
                                 placeholder="Temperature (<sup>o</sup>F)"
-                                value={settings?.yTitle ?? 'Temperature (<sup>o</sup>F)'}
-                                onChange={(e) => handleSettingChange('yTitle', e.target.value)}
+                                value={localValues.yTitle}
+                                onChange={(e) => handleFieldChange('yTitle', e.target.value)}
+                                onBlur={() => handleFieldBlur('yTitle')}
                                 style={{
                                     width: '100%',
                                     padding: '0.4rem 0.6rem',

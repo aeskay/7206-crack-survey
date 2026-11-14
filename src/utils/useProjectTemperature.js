@@ -46,10 +46,23 @@ export function useProjectTemperature(projectId) {
         setTempBundle(completeBundle);
     }, [projectId]);
 
-    const handleUpdateSettings = useCallback(async (newSettings) => {
+    const handleUpdateSettings = useCallback((newSettings) => {
         if (!projectId) return;
-        const updated = await updateProjectTemperatureSettings(projectId, newSettings);
-        setTempBundle(updated);
+        // Optimistic instant state update for immediate chart rendering
+        setTempBundle(prev => {
+            if (!prev) return prev;
+            return {
+                ...prev,
+                settings: {
+                    ...(prev.settings || DEFAULT_TEMP_SETTINGS),
+                    ...newSettings
+                }
+            };
+        });
+        // Background persistence without blocking UI
+        updateProjectTemperatureSettings(projectId, newSettings).catch(err => {
+            console.warn('Failed to persist temperature settings:', err);
+        });
     }, [projectId]);
 
     const handleClear = useCallback(async () => {

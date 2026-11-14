@@ -129,6 +129,10 @@ export async function saveProjectTemperature(projectId, tempBundle) {
     }
 }
 
+// Debounce timer for remote settings writes to prevent network thrashing on rapid typing
+let remoteSettingsTimeout = null;
+let pendingSettingsByProject = {};
+
 /**
  * Update just the chart display settings for the project's temperature series.
  * @param {string|number} projectId
@@ -137,6 +141,12 @@ export async function saveProjectTemperature(projectId, tempBundle) {
  */
 export async function updateProjectTemperatureSettings(projectId, newSettings) {
     if (!projectId) return {};
+
+    pendingSettingsByProject[projectId] = {
+        ...(pendingSettingsByProject[projectId] || {}),
+        ...newSettings
+    };
+
     let existing = await get(getStorageKey(projectId));
     if (!existing) {
         try {
@@ -153,32 +163,47 @@ export async function updateProjectTemperatureSettings(projectId, newSettings) {
         summary: existing?.summary || {},
         settings: {
             ...(existing?.settings || DEFAULT_TEMP_SETTINGS),
-            ...newSettings
+            ...pendingSettingsByProject[projectId]
         },
         updatedAt: new Date().toISOString()
     };
 
-    // Save to IndexedDB
+    // Save immediately to local IndexedDB
     try {
         await set(getStorageKey(projectId), merged);
     } catch (e) {}
 
-    // Save to Firestore
-    try {
-        const docRef = doc(db, 'project_temperatures', String(projectId));
-        await setDoc(docRef, { settings: merged.settings, updatedAt: merged.updatedAt }, { merge: true });
-    } catch (fsErr) {
-        console.warn('Failed to update temperature settings in Firestore:', fsErr);
+    // Debounce remote writes (Firestore + Backend) by 400ms so typing is frictionless
+    if (remoteSettingsTimeout) {
+        clearTimeout(remoteSettingsTimeout);
     }
 
-    // Backend update
-    try {
-        await fetch(`${API_BASE}/projects/${projectId}/temperature`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(merged)
-        });
-    } catch (e) {}
+    remoteSettingsTimeout = setTimeout(async () => {
+        const toSaveSettings = pendingSettingsByProject[projectId];
+        delete pendingSettingsByProject[projectId];
+
+        if (!toSaveSettings) return;
+
+        // Save to Firestore
+        try {
+            const docRef = doc(db, 'project_temperatures', String(projectId));
+            await setDoc(docRef, { settings: toSaveSettings, updatedAt: new Date().toISOString() }, { merge: true });
+        } catch (fsErr) {
+            console.warn('Failed to update temperature settings in Firestore:', fsErr);
+        }
+
+        // Backend update (only update settings, don't re-post full series data)
+        try {
+            await fetch(`${API_BASE}/projects/${projectId}/temperature`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    projectId: Number(projectId),
+                    settings: toSaveSettings
+                })
+            });
+        } catch (e) {}
+    }, 400);
 
     return merged;
 }

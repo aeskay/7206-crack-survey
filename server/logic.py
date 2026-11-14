@@ -450,7 +450,7 @@ def save_project_temperature(project_id: int, bundle: dict) -> dict:
     client = get_db()
     bundle["projectId"] = int(project_id)
     bundle["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    client.collection("project_temperatures").document(str(project_id)).set(bundle)
+    client.collection("project_temperatures").document(str(project_id)).set(bundle, merge=True)
     return bundle
 
 def delete_project_temperature(project_id: int):
