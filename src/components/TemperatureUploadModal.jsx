@@ -290,7 +290,7 @@ const TemperatureUploadModal = ({ isOpen, onClose, onSave, existingFileName }) =
                             🌡️ Import & Parse Temperature Data
                         </h2>
                         <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#64748b' }}>
-                            Only selected downsampled columns are saved locally in browser storage (IndexedDB)
+                            Processed temperature series is saved to Firestore & local storage for instant loading
                         </p>
                     </div>
                     <button

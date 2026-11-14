@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
     getProjectTemperature,
+    syncProjectTemperatureWithFirestore,
     saveProjectTemperature,
     updateProjectTemperatureSettings,
     clearProjectTemperature,
@@ -9,7 +10,7 @@ import {
 
 export function useProjectTemperature(projectId) {
     const [tempBundle, setTempBundle] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
 
     const loadData = useCallback(async () => {
         if (!projectId) {
@@ -17,16 +18,25 @@ export function useProjectTemperature(projectId) {
             setIsLoading(false);
             return;
         }
-        setIsLoading(true);
+
+        // 1. Instant local read from IndexedDB (< 5ms) - Zero lag, presentation-ready
         try {
-            const stored = await getProjectTemperature(projectId);
-            setTempBundle(stored);
+            const cached = await getProjectTemperature(projectId);
+            if (cached) {
+                setTempBundle(cached);
+            }
         } catch (err) {
-            console.error('Error loading project temperature:', err);
-            setTempBundle(null);
-        } finally {
-            setIsLoading(false);
+            console.warn('Local temperature cache read warning:', err);
         }
+
+        // 2. Non-blocking background sync with Firestore (Stale-While-Revalidate)
+        syncProjectTemperatureWithFirestore(projectId).then(fresh => {
+            if (fresh) {
+                setTempBundle(fresh);
+            }
+        }).catch(err => {
+            console.warn('Background temperature sync warning:', err);
+        });
     }, [projectId]);
 
     useEffect(() => {
@@ -42,6 +52,7 @@ export function useProjectTemperature(projectId) {
                 ...(newBundle.settings || {})
             }
         };
+        // Instant local save + background Firestore upload
         await saveProjectTemperature(projectId, completeBundle);
         setTempBundle(completeBundle);
     }, [projectId]);
