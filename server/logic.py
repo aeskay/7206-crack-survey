@@ -220,7 +220,6 @@ def delete_project(project_id: int):
     batch_delete_docs(client.collection("survey_days").where(filter=FieldFilter("project_id", "==", project_id)).get())
     batch_delete_docs(client.collection("sections").where(filter=FieldFilter("project_id", "==", project_id)).get())
     batch_delete_docs(client.collection("project_metadata").where(filter=FieldFilter("project_id", "==", project_id)).get())
-    delete_project_temperature(project_id)
     client.collection("projects").document(str(project_id)).delete()
 
 def duplicate_project(project_id: int) -> dict:
@@ -290,13 +289,6 @@ def duplicate_project(project_id: int) -> dict:
                 count = 0
         if count > 0:
             batch.commit()
-
-    # Copy temperature data if exists
-    orig_temp = get_project_temperature(project_id)
-    if orig_temp:
-        temp_copy = dict(orig_temp)
-        temp_copy["projectId"] = new_id
-        save_project_temperature(new_id, temp_copy)
 
     return new_project
 
@@ -440,20 +432,4 @@ def delete_authorized_user(email: str) -> bool:
     client = get_db()
     client.collection("authorized_users").document(clean).delete()
     return True
-
-def get_project_temperature(project_id: int) -> Optional[dict]:
-    client = get_db()
-    doc = client.collection("project_temperatures").document(str(project_id)).get()
-    return doc.to_dict() if doc.exists else None
-
-def save_project_temperature(project_id: int, bundle: dict) -> dict:
-    client = get_db()
-    bundle["projectId"] = int(project_id)
-    bundle["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    client.collection("project_temperatures").document(str(project_id)).set(bundle, merge=True)
-    return bundle
-
-def delete_project_temperature(project_id: int):
-    client = get_db()
-    client.collection("project_temperatures").document(str(project_id)).delete()
 
